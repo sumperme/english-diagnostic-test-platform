@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDT | 學術英語診斷測試</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@700&family=Noto+Serif+TC:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Your Custom Palette */
+            --accent-neon: #CEFF1A;   /* Electric Lime */
+            --muted-gold: #AAA95A;    /* Sage Gold */
+            --olive-drab: #82816D;    /* Mid Tone */
+            --deep-indigo: #414066;   /* Secondary Deep */
+            --forest-black: #1B2D2A;  /* Primary Background */
+            --soft-white: #F4F4F4;
+        }
+
+        body {
+            font-family: 'Montserrat', 'Noto Serif TC', serif;
+            margin: 0;
+            background-color: var(--forest-black);
+            color: var(--soft-white);
+            line-height: 1.8;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Noto Serif TC', serif;
+            font-weight: 700;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        /* --- 導覽列 (Navigation) --- */
+        nav {
+            background-color: rgba(27, 45, 42, 0.95);
+            padding: 15px 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(130, 129, 109, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .logo {
+            font-family: 'Bodoni Moda', serif;
+            font-size: 2rem;
+            color: var(--accent-neon);
+            text-decoration: none;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+
+        .menu-links {
+            display: flex;
+            gap: 25px;
+        }
+
+        .menu-links a {
+            text-decoration: none;
+            color: var(--soft-white);
+            font-size: 0.9rem;
+            font-weight: 400;
+            transition: color 0.3s;
+        }
+
+        .menu-links a:hover {
+            color: var(--accent-neon);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+
+        .lang-select {
+            background: transparent;
+            color: var(--olive-drab);
+            border: 1px solid var(--olive-drab);
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .login-btn {
+            color: var(--forest-black);
+            background-color: var(--muted-gold);
+            padding: 10px 25px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .login-btn:hover {
+            background-color: var(--accent-neon);
+            box-shadow: 0 0 15px rgba(206, 255, 26, 0.3);
+        }
+
+        /* --- 主視覺 (Hero Section) --- */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            background: 
+                linear-gradient(to right, var(--forest-black) 40%, rgba(27, 45, 42, 0) 100%),
+                url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&q=80&w=1920'); 
+            background-size: cover;
+            background-position: center;
+        }
+
+        .hero-content {
+            max-width: 750px;
+        }
+
+        .cefr-tag {
+            color: var(--accent-neon);
+            border-left: 4px solid var(--accent-neon);
+            padding-left: 15px;
+            font-size: 1.1rem;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 {
+            font-size: 4.2rem;
+            margin: 0 0 30px;
+            line-height: 1.2;
+            color: var(--soft-white);
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--olive-drab);
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        .cta-primary {
+            display: inline-block;
+            padding: 22px 55px;
+            border: 1px solid var(--accent-neon);
+            color: var(--accent-neon);
+            text-decoration: none;
+            font-weight: 700;
+            letter-spacing: 3px;
+            transition: all 0.4s;
+        }
+
+        .cta-primary:hover {
+            background-color: var(--accent-neon);
+            color: var(--forest-black);
+            box-shadow: 0 0 35px rgba(206, 255, 26, 0.4);
+        }
+
+        /* --- 報告特點 (Report Section) --- */
+        .report-section {
+            padding: 120px 0;
+            background: linear-gradient(var(--forest-black), var(--deep-indigo));
+            border-top: 1px solid rgba(130, 129, 109, 0.1);
+        }
+
+        .report-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 100px;
+            align-items: center;
+        }
+
+        .report-text h2 {
+            font-size: 3rem;
+            color: var(--muted-gold);
+            margin-bottom: 25px;
+        }
+
+        .report-text p {
+            color: var(--olive-drab);
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+
+        .quote {
+            border-left: 2px solid var(--accent-neon);
+            padding-left: 20px;
+            font-style: italic;
+            color: var(--soft-white);
+            margin-top: 30px;
+        }
+
+        .report-image {
+            background: var(--deep-indigo);
+            height: 450px;
+            border: 1px solid rgba(206, 255, 26, 0.2);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .report-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.5;
+        }
+
+        /* 頁尾 (Footer) */
+        footer {
+            padding: 50px 0;
+            text-align: center;
+            color: var(--olive-drab);
+            font-size: 0.85rem;
+            letter-spacing: 2px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        @media (max-width: 1024px) {
+            .menu-links, .nav-right { display: none; }
+            .hero h1 { font-size: 3rem; }
+            .report-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="container nav-content">
+            <div class="nav-left">
+                <a href="#" class="logo">EDT</a>
+                <div class="menu-links">
+                    <a href="#">學習者</a>
+                    <a href="#">學校機構</a>
+                    <a href="#">大專院校</a>
+                    <a href="#">企業方案</a>
+                </div>
+            </div>
+            
+            <div class="nav-right">
+                <select class="lang-select">
+                    <option>繁體中文</option>
+                    <option>English</option>
+                    <option>日本語</option>
+                </select>
+                <a href="#" class="login-btn">登入系統</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="cefr-tag">專業學術英語診斷</div>
+                <h1>通往全球頂尖學府的關鍵</h1>
+                <p>專為中學畢業生及準大學生設計，精準接軌 CEFR C1 與 C2 級別。在邁向國際學術殿堂前，確保您的語言根基堅實無虞。</p>
+                <a href="#" class="cta-primary">開始診斷測試</a>
+            </div>
+        </div>
+    </header>
+
+    <section class="report-section">
+        <div class="container">
+            <div class="report-grid">
+                <div class="report-text">
+                    <h2>以數據引領卓越</h2>
+                    <p>我們的診斷報告超越單純的分數評核。它將深度剖析您的語言能力圖譜，精準識別學術應用中的薄弱環節。</p>
+                    <p>在進入全英語授課的學位課程前，針對性地鞏固語言基礎，是確保學業成功的核心策略。</p>
+                    <div class="quote">
+                        「C2 等級的語言能力，是應對高難度學術研究與專業對話的基本門檻。我們助您達成此項卓越標準。」
+                    </div>
+                </div>
+                <div class="report-image">
+                    <img src="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=1000" alt="學術報告預覽">
+                    <div style="position:absolute; color:var(--accent-neon); font-weight:700; letter-spacing:4px; background: rgba(0,0,0,0.5); padding: 10px 20px;">報告樣本預覽</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 EDT GLOBAL ｜ 為全球學者奠定卓越基石</p>
+        </div>
+    </footer>
+
+</body>
+</html>

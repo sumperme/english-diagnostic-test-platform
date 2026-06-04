@@ -1,0 +1,18 @@
+name = "edt-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-29"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[[d1_databases]]
+binding = "DB"
+database_name = "edt-diagnostic"
+database_id = "4c4685d5-4e7d-415f-8c50-61894219deb4"
+migrations_dir = "../migrations"
+
+[vars]
+ALLOWED_ORIGIN = "http://localhost:5173"
+SESSION_TTL_SECONDS = "7200"

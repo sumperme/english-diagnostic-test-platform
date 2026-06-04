@@ -1,0 +1,16 @@
+{
+  "name": "english-diagnostic-test-platform",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "worker"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend && npm run build --workspace=worker",
+    "lint": "npm run lint --workspace=frontend && npm run lint --workspace=worker",
+    "typecheck": "npm run typecheck --workspace=frontend && npm run typecheck --workspace=worker",
+    "worker:dev": "npm run dev --workspace=worker",
+    "worker:deploy": "npm run deploy --workspace=worker"
+  }
+}

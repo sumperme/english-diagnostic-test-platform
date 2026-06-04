@@ -1,0 +1,9 @@
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+.wrangler/
+.dev.vars
+*.local
+Evouchers.txt
+seed-vouchers.sql
+.cursor/
