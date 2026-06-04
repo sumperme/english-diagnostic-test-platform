@@ -14,5 +14,5 @@ database_id = "4c4685d5-4e7d-415f-8c50-61894219deb4"
 migrations_dir = "../migrations"
 
 [vars]
-ALLOWED_ORIGIN = "http://localhost:5173"
+ALLOWED_ORIGIN = "https://eng-diagnostic.tzy667.workers.dev"
 SESSION_TTL_SECONDS = "7200"
