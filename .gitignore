@@ -7,3 +7,4 @@ frontend/tsconfig.tsbuildinfo
 Evouchers.txt
 seed-vouchers.sql
 .cursor/
+Client_Feedback/
