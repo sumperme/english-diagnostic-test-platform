@@ -20,27 +20,27 @@ Use this to track where you are. Steps marked **[done]** match work already comp
 | 3    | D1 database `edt-diagnostic` + ID in `wrangler.toml` | **[done]**                                      |
 | 4    | Remote migrations (`0001_init.sql`)                  | **[done]**                                      |
 | 5    | Seed vouchers from `Evouchers.txt`                   | **TODO** — run Step 3 below if not done         |
-| 6    | Workers Builds: build + deploy API                   | **[done]** — `cd worker && npx wrangler deploy` |
-| 7    | Cloudflare Access: allow students                    | **TODO** — Step 5 below                         |
+| 6    | Workers Builds: build + deploy                       | **[done]** — see Step 4 deploy command            |
+| 7    | Cloudflare Access: allow students                    | **[done]**                                      |
 | 8    | `ALLOWED_ORIGIN` → production URL                    | **[done]** — redeploy via push to `main`        |
-| 9    | Serve React app on same URL (static assets)          | **TODO** — Step 7 below                         |
+| 9    | Serve React app on same URL (static assets)          | **[done in repo]** — update CI deploy command (Step 7) |
 | 10   | End-to-end smoke test (voucher → quiz → submit)      | **TODO** — Step 8 below                         |
 
 
-**Important:** Step 6 deployed the **API only**. The landing page and quiz are **not** on the Worker URL yet until Step 7. `/api/health` should work after Access is fixed.
+**Important:** After you change the Workers Builds **deploy command** (Step 7), push to `main` or retry deploy so production serves both the React app and `/api/*`.
 
 ---
 
-## Architecture (what you have now)
+## Architecture (target setup)
 
 ```text
 GitHub (main) → Cloudflare Workers Builds
                   ├─ Build:  npm run build  (frontend/dist + worker typecheck)
-                  └─ Deploy: cd worker && npx wrangler deploy  →  eng-diagnostic Worker + D1
+                  └─ Deploy: npx wrangler deploy -c wrangler.toml  →  eng-diagnostic Worker + assets + D1
 
 Browser → https://eng-diagnostic.tzy667.workers.dev
-            ├─ /api/*     → Worker (voucher, submit)  ✅ deployed
-            └─ /, /quiz…  → static files               ❌ not deployed yet (Step 7)
+            ├─ /api/*     → Worker (voucher, submit)  run_worker_first
+            └─ /, /quiz…  → frontend/dist static files (SPA fallback)
 ```
 
 Optional later: separate **Cloudflare Pages** project for frontend only, with `VITE_API_BASE` pointing at the Worker URL (see [Alternative: Pages for frontend only](#alternative-pages-for-frontend-only)).
@@ -113,23 +113,24 @@ You used **Workers** → **Connect to Git**, not classic Pages. Keep these setti
 | **Production branch** | `main`                                      |
 | **Project name**      | `english-diagnostic-test-platform`          |
 | **Build command**     | `npm run build`                             |
-| **Deploy command**    | `cd worker && npx wrangler deploy`          |
+| **Deploy command**    | `npx wrangler deploy -c wrangler.toml`      |
 | **Path**              | `/` (repo root)                             |
 
 
 ### Build log expectations
 
 - `npm run build` → builds `frontend/dist` and typechecks worker ✅  
-- `cd worker && npx wrangler deploy` → uploads API Worker ✅  
-- Warning: CI may rename Worker to `**eng-diagnostic`** (dashboard name) even if `wrangler.toml` says `edt-api` — harmless; optional align `name` in config later.
+- `npx wrangler deploy -c wrangler.toml` → uploads Worker + static assets from `frontend/dist` ✅  
+- Worker name in config: `eng-diagnostic` (matches dashboard)
 
 ### Do not use (causes failure)
 
 
-| Deploy command                            | Problem                    |
-| ----------------------------------------- | -------------------------- |
-| `npx wrangler deploy` (from repo root)    | Workspace autoconfig error |
-| Pages-only settings without Worker deploy | API not deployed           |
+| Deploy command                            | Problem                                      |
+| ----------------------------------------- | -------------------------------------------- |
+| `npx wrangler deploy` (no `-c wrangler.toml`) | Workspace autoconfig error (old behaviour) |
+| `cd worker && npx wrangler deploy`        | API only — no React app on `/`               |
+| Pages-only settings without Worker deploy | API not deployed                             |
 
 
 ---
@@ -170,29 +171,17 @@ Rules: `https://`, no trailing `/`, must match the address bar exactly.
 **Redeploy** so production picks up the change:
 
 - **Push to `main`** (Workers Builds redeploys automatically), or  
-- Local: `cd worker && npx wrangler deploy`
+- Local: `npm run deploy` (full stack) or `npm run worker:deploy` (API only)
 
 If you later host the UI on **Pages** or a custom domain, change `ALLOWED_ORIGIN` to that URL and redeploy again.
-
-Optional: set `name = "eng-diagnostic"` in both wrangler files to match the dashboard and remove CI name warnings.
 
 Local dev: `npm run dev` proxies `/api` to the worker on port 8787; you do not need production `ALLOWED_ORIGIN` for that flow.
 
 ---
 
-## Step 7 — Serve the React app on the same URL [TODO]
+## Step 7 — Serve the React app on the same URL [done in repo]
 
-Right now only the API is deployed. To show the landing page and quiz at `https://eng-diagnostic.tzy667.workers.dev/`, use **one** of the following.
-
-### Option A — Full stack from repo root (recommended)
-
-Requires a small `wrangler.toml` change (replace deprecated `pages_build_output_dir` with `[assets]`). After that, change Workers Builds **deploy command** to:
-
-```text
-npx wrangler deploy -c wrangler.toml
-```
-
-Root config should include (example):
+Root `wrangler.toml` is configured for full-stack deploy:
 
 ```toml
 name = "eng-diagnostic"
@@ -206,9 +195,32 @@ run_worker_first = ["/api/*"]
 
 Build command stays `npm run build` so `frontend/dist` exists before deploy.
 
-Ask in Agent mode to apply this config change in the repo if you want it committed for CI.
+### Manual step — update Workers Builds deploy command
 
-### Option B — Keep API deploy; add Cloudflare Pages for UI
+The repo is ready; **you must change one setting in the Cloudflare dashboard** (CI does not read this from git):
+
+1. [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **english-diagnostic-test-platform**.
+2. **Settings** → **Build** (or **Build configuration**).
+3. Change **Deploy command** from:
+   ```text
+   cd worker && npx wrangler deploy
+   ```
+   to:
+   ```text
+   npx wrangler deploy -c wrangler.toml
+   ```
+4. **Save**, then **Retry deployment** on the latest build (or push any commit to `main`).
+
+After deploy, open `https://eng-diagnostic.tzy667.workers.dev/` — you should see the EDT landing page, not a 404.
+
+Local full-stack deploy (optional):
+
+```powershell
+npm run build
+npm run deploy
+```
+
+### Option B — Keep API deploy; add Cloudflare Pages for UI (not used)
 
 1. **Workers & Pages** → **Create** → **Pages** → **Connect to Git** (same repo).
 2. Build: `npm run build --workspace=frontend`, output: `frontend/dist`.
@@ -243,10 +255,10 @@ Ask in Agent mode to apply this config change in the repo if you want it committ
 **Settings → Build**
 
 
-| Field          | Your value                                                   |
-| -------------- | ------------------------------------------------------------ |
-| Build command  | `npm run build`                                              |
-| Deploy command | `cd worker && npx wrangler deploy` *(until Step 7 Option A)* |
+| Field          | Your value                              |
+| -------------- | --------------------------------------- |
+| Build command  | `npm run build`                         |
+| Deploy command | `npx wrangler deploy -c wrangler.toml`  |
 
 
 **Visit URL after deploy**
