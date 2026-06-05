@@ -1,5 +1,6 @@
 type Env = {
   DB: D1Database;
+  ASSETS: Fetcher;
   ALLOWED_ORIGIN?: string;
   SESSION_TTL_SECONDS?: string;
 };
@@ -130,6 +131,10 @@ export default {
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    if (!url.pathname.startsWith('/api/')) {
+      return env.ASSETS.fetch(request);
     }
 
     try {

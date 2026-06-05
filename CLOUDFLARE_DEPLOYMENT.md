@@ -188,30 +188,45 @@ name = "eng-diagnostic"
 main = "worker/src/index.ts"
 
 [assets]
-directory = "frontend/dist"
+directory = "./frontend/dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 ```
 
+The Worker delegates non-`/api/` requests to `env.ASSETS.fetch()` so `/` serves the React app instead of `{"error":"Not found"}`.
+
 Build command stays `npm run build` so `frontend/dist` exists before deploy.
 
-### Manual step — update Workers Builds deploy command
+### Workers Builds settings [done in dashboard]
 
-The repo is ready; **you must change one setting in the Cloudflare dashboard** (CI does not read this from git):
+| Field | Value |
+|--------|--------|
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy -c wrangler.toml` |
+| Root directory | `/` |
 
-1. [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **english-diagnostic-test-platform**.
-2. **Settings** → **Build** (or **Build configuration**).
-3. Change **Deploy command** from:
+After each push to `main`, open the latest deployment log and confirm:
+
+```text
+✨ Read 5 files from the assets directory .../frontend/dist
+```
+
+and bindings include `env.ASSETS` (Assets). If you only see ~5 KiB upload and no `ASSETS`, the deploy is API-only — fix the deploy command and retry.
+
+### If `/` still shows `{"error":"Not found"}`
+
+That JSON comes from the **API Worker**, not the static site. Common causes:
+
+1. **Old deploy still live** — Workers & Pages → **Deployments** → **Retry deployment** on latest `main` build.
+2. **Deploy command wrong** — must be `npx wrangler deploy -c wrangler.toml` (no trailing `.`).
+3. **`frontend/dist` missing at deploy time** — build log must show Vite output (`dist/index.html`). If unsure, set deploy command to:
    ```text
-   cd worker && npx wrangler deploy
+   npm run build && npx wrangler deploy -c wrangler.toml
    ```
-   to:
-   ```text
-   npx wrangler deploy -c wrangler.toml
-   ```
-4. **Save**, then **Retry deployment** on the latest build (or push any commit to `main`).
+4. **Pushed fix** — ensure latest commit (Worker `ASSETS.fetch` + `binding = "ASSETS"`) is deployed.
 
-After deploy, open `https://eng-diagnostic.tzy667.workers.dev/` — you should see the EDT landing page, not a 404.
+After a good deploy, open `https://eng-diagnostic.tzy667.workers.dev/` — EDT landing page (dark green hero), not JSON.
 
 Local full-stack deploy (optional):
 
@@ -243,6 +258,7 @@ npm run deploy
 | ----------------- | ------------------------------------------ |
 | Access login page | Step 5 — policy **Everyone** or delete app |
 | CORS error        | Step 6 — `ALLOWED_ORIGIN` + redeploy       |
+| `{"error":"Not found"}` on `/` | Redeploy with assets; check log for `env.ASSETS` and 5 files in `frontend/dist` |
 | 404 on `/`        | Step 7 — deploy static assets              |
 | Invalid voucher   | Step 3 — seed D1                           |
 | 401 voucher       | Code already used or typo                  |
