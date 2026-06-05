@@ -1,53 +1,29 @@
-import { LocaleSwitcher } from '../components/LocaleSwitcher';
+import { EdtNavBar } from '../components/EdtNavBar';
 import { PrimaryCTA } from '../components/PrimaryCTA';
 import { VisualCard } from '../components/VisualCard';
 import { useLocale } from '../i18n/LocaleContext';
+import { cardImages, heroBackgroundStyle, reportImage } from '../lib/landingAssets';
+import type { MarketingPage } from '../types';
 
-const heroImage = 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&q=80&w=1920';
-const reportImage = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=1000';
-const cardImages = [
-  'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=800',
-  'https://images.unsplash.com/photo-1454165833767-0266b196773b?auto=format&fit=crop&q=80&w=800',
-  'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=800',
-];
-
-export function LandingScreen({ onStart }: { onStart: () => void }) {
+export function LandingScreen({
+  onStart,
+  onNavigate,
+  onLogoClick,
+}: {
+  onStart: () => void;
+  onNavigate: (page: MarketingPage) => void;
+  onLogoClick: () => void;
+}) {
   const { t, language } = useLocale();
   const headingFont = language === 'zh-HK' ? 'font-zh' : 'font-display';
 
   return (
     <div className="min-h-screen bg-edt-forest text-edt-soft">
-      <nav className="fixed inset-x-0 top-0 z-50 border-b border-[rgba(130,129,109,0.2)] bg-[rgba(27,45,42,0.95)] py-4 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1300px] items-center justify-between gap-6 px-6 md:px-10">
-          <div className="flex items-center gap-10">
-            <a className="font-display text-3xl font-bold tracking-[0.12em] text-edt-neon" href="/">
-              EDT
-            </a>
-            <div className="hidden gap-6 lg:flex">
-              {[t.nav.learners, t.nav.schools, t.nav.universities, t.nav.collaboration].map((item) => (
-                <a key={item} className="text-xs font-normal uppercase tracking-[0.14em] text-edt-soft transition-colors hover:text-edt-neon" href="#how">
-                  {item}
-                </a>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <LocaleSwitcher />
-            <PrimaryCTA tone="filled" onClick={onStart} className="hidden px-6 py-2.5 md:inline-flex">
-              {t.nav.login}
-            </PrimaryCTA>
-          </div>
-        </div>
-      </nav>
+      <EdtNavBar variant="marketing" activePage="landing" onNavigate={onNavigate} onLogin={onStart} onLogoClick={onLogoClick} />
 
-      <header
-        className="flex min-h-screen items-center bg-cover bg-center pt-20"
-        style={{
-          backgroundImage: `linear-gradient(to right, #1B2D2A 40%, rgba(27,45,42,0) 100%), url(${heroImage})`,
-        }}
-      >
-        <div className="mx-auto w-full max-w-[1300px] px-6 md:px-10">
-          <div className="max-w-2xl">
+      <header className="-mt-nav flex min-h-screen items-center bg-cover bg-center pt-nav" style={heroBackgroundStyle}>
+        <div className="mx-auto w-full max-w-content px-6 md:px-10">
+          <div className="ml-[10%] max-w-2xl">
             <div className="border-l-4 border-edt-neon pl-4 text-sm uppercase tracking-[0.22em] text-edt-neon">
               {t.landing.tag}
             </div>
@@ -61,7 +37,7 @@ export function LandingScreen({ onStart }: { onStart: () => void }) {
       </header>
 
       <section className="border-t border-[rgba(130,129,109,0.1)] py-24">
-        <div className="mx-auto grid max-w-[1300px] items-center gap-16 px-6 lg:grid-cols-2 md:px-10">
+        <div className="mx-auto grid max-w-content items-center gap-16 px-6 lg:grid-cols-2 md:px-10">
           <div>
             <h2 className={`mb-5 text-4xl text-edt-gold md:text-5xl ${headingFont}`}>{t.landing.reportTitle}</h2>
             <p className="text-base leading-8 text-edt-soft/80">{t.landing.reportBody}</p>
@@ -75,7 +51,7 @@ export function LandingScreen({ onStart }: { onStart: () => void }) {
       </section>
 
       <section id="how" className="py-20">
-        <div className="mx-auto max-w-[1300px] px-6 md:px-10">
+        <div className="mx-auto max-w-content px-6 md:px-10">
           <div className="mb-14 text-center">
             <h2 className={`text-4xl md:text-5xl ${headingFont}`}>{t.landing.howTitle}</h2>
           </div>

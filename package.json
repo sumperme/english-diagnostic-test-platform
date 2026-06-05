@@ -13,6 +13,7 @@
     "worker:dev": "npm run dev --workspace=worker",
     "worker:deploy": "npm run deploy --workspace=worker",
     "deploy": "wrangler deploy -c wrangler.toml",
-    "publish:ui": "powershell -ExecutionPolicy Bypass -File ./scripts/publish-ui.ps1"
+    "publish:ui": "powershell -ExecutionPolicy Bypass -File ./scripts/publish-ui.ps1",
+    "preview:local": "powershell -ExecutionPolicy Bypass -File ./scripts/local-preview.ps1"
   }
 }

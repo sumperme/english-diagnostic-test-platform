@@ -1,13 +1,28 @@
 import { useState } from 'react';
 import { InfoScreen } from './screens/InfoScreen';
 import { LandingScreen } from './screens/LandingScreen';
+import { MarketingScreen } from './screens/MarketingScreen';
+import { PurchaseVoucherScreen } from './screens/PurchaseVoucherScreen';
 import { QuizScreen } from './screens/QuizScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
 import { VoucherScreen } from './screens/VoucherScreen';
 import { loadSession } from './lib/session';
-import type { CandidateInfo, ReportResult, Session } from './types';
+import type { CandidateInfo, MarketingPage, ReportResult, Session } from './types';
 
-type Screen = 'landing' | 'voucher' | 'info' | 'quiz' | 'results';
+type Screen =
+  | 'landing'
+  | MarketingPage
+  | 'voucher'
+  | 'purchase'
+  | 'info'
+  | 'quiz'
+  | 'results';
+
+const MARKETING_PAGES: MarketingPage[] = ['learners', 'schools', 'universities', 'collaboration'];
+
+function isMarketingPage(screen: Screen): screen is MarketingPage {
+  return MARKETING_PAGES.includes(screen as MarketingPage);
+}
 
 export function App() {
   const [screen, setScreen] = useState<Screen>('landing');
@@ -15,39 +30,48 @@ export function App() {
   const [info, setInfo] = useState<CandidateInfo | null>(null);
   const [result, setResult] = useState<ReportResult | null>(null);
 
+  const goLanding = () => setScreen('landing');
+  const goMarketing = (page: MarketingPage) => setScreen(page);
   const goVoucher = () => setScreen(session ? 'info' : 'voucher');
+  const goHomeFromApp = () => setScreen('landing');
 
   return (
     <>
-      {screen === 'landing' ? <LandingScreen onStart={goVoucher} /> : null}
+      {screen === 'landing' ? (
+        <LandingScreen onStart={goVoucher} onNavigate={goMarketing} onLogoClick={goLanding} />
+      ) : null}
+      {isMarketingPage(screen) ? (
+        <MarketingScreen page={screen} onNavigate={goMarketing} onLogin={goVoucher} onLogoClick={goLanding} />
+      ) : null}
       {screen === 'voucher' ? (
         <VoucherScreen
-          onBack={() => setScreen('landing')}
+          onBack={goHomeFromApp}
+          onPurchase={() => setScreen('purchase')}
           onSuccess={(nextSession) => {
             setSession(nextSession);
             setScreen('info');
           }}
         />
       ) : null}
+      {screen === 'purchase' ? <PurchaseVoucherScreen onHome={goHomeFromApp} /> : null}
       {screen === 'info' ? (
-        <InfoScreen
-          onNext={(candidateInfo) => {
-            setInfo(candidateInfo);
-            setScreen('quiz');
-          }}
-        />
+        <InfoScreen onNext={(candidateInfo) => {
+          setInfo(candidateInfo);
+          setScreen('quiz');
+        }} onNavigate={goMarketing} onLogin={goVoucher} onLogoClick={goLanding} />
       ) : null}
       {screen === 'quiz' && info && session ? (
         <QuizScreen
           candidateInfo={info}
           session={session}
+          onBack={() => setScreen('info')}
           onSubmit={(nextResult) => {
             setResult(nextResult);
             setScreen('results');
           }}
         />
       ) : null}
-      {screen === 'results' && result ? <ResultsScreen result={result} /> : null}
+      {screen === 'results' && result ? <ResultsScreen result={result} onHome={goHomeFromApp} /> : null}
     </>
   );
 }

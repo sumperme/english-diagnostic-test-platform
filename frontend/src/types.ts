@@ -3,6 +3,8 @@ import type { CefrBand } from './data/cefr';
 
 export type Language = 'en' | 'zh-HK';
 
+export type MarketingPage = 'learners' | 'schools' | 'universities' | 'collaboration';
+
 export type Answers = Record<string, OptionKey | undefined>;
 
 export type CandidateInfo = {

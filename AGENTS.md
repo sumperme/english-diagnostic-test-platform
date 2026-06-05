@@ -57,7 +57,7 @@ Load fonts with:
 ## Layout
 
 - Global marketing background: `bg-edt-forest text-edt-soft`.
-- Main container: `max-w-[1300px] mx-auto px-6 md:px-10`.
+- Main container: `max-w-content mx-auto px-6 md:px-10`.
 - Fixed nav: `bg-[rgba(27,45,42,0.95)]`, `backdrop-blur-md`, bottom border `border-[rgba(130,129,109,0.2)]`.
 - Hero height: `min-h-screen`, with content vertically centered and top padding to clear fixed nav.
 - Section spacing: `py-20 md:py-24` for major marketing/report sections.
@@ -103,7 +103,7 @@ export function LocaleSwitcher({ value, onChange }: {
 export function NavBar({ children }: { children: React.ReactNode }) {
   return (
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-[rgba(130,129,109,0.2)] bg-[rgba(27,45,42,0.95)] py-4 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1300px] items-center justify-between px-6 md:px-10">
+      <div className="mx-auto flex max-w-content items-center justify-between px-6 md:px-10">
         <a className="font-display text-3xl font-bold tracking-[0.12em] text-edt-neon" href="/">
           EDT
         </a>

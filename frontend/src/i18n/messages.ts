@@ -8,6 +8,90 @@ export const messages = {
       universities: 'For universities',
       collaboration: 'For collaboration',
       login: 'Log in',
+      home: 'Home',
+      back: 'Back',
+    },
+    marketing: {
+      learners: {
+        tag: 'For Learners',
+        title: 'Know Your Readiness Before University.',
+        subtitle: 'EDT helps advanced learners benchmark C1 and C2 competence with a rigorous 72-question diagnostic and a detailed competency profile.',
+        cta: 'Start Diagnostic Test',
+        sections: [
+          {
+            heading: 'Precision at C1 and C2',
+            body: 'The assessment samples advanced grammar, vocabulary, and academic readiness so you can see exactly where your English stands before demanding study.',
+          },
+          {
+            heading: 'Actionable Report',
+            body: 'Your results map to 12 diagnostic dimensions and a CEFR-aligned band, highlighting priority areas for consolidation and revision.',
+          },
+          {
+            heading: 'Plan Your Next Step',
+            body: 'Use the report to target weak dimensions, track improvement across retakes, and enter university-level English study with confidence.',
+          },
+        ],
+      },
+      schools: {
+        tag: 'For Schools',
+        title: 'Support Every Learner With Data.',
+        subtitle: 'Give teachers and coordinators a consistent diagnostic view of senior secondary English readiness across cohorts.',
+        cta: 'Explore Classroom Plans',
+        sections: [
+          {
+            heading: 'Classroom Voucher Packs',
+            body: 'Deploy single-use vouchers at scale for mock diagnostics, transition programmes, and targeted intervention groups.',
+          },
+          {
+            heading: 'Cohort Insight',
+            body: 'Identify common weak dimensions across a class or year group to inform curriculum planning and revision priorities.',
+          },
+          {
+            heading: 'Reporting Roadmap',
+            body: 'Bulk cohort dashboards and export tools are planned for a future release to streamline school-level reporting.',
+          },
+        ],
+      },
+      universities: {
+        tag: 'For Universities',
+        title: 'Admissions Readiness at Scale.',
+        subtitle: 'Support foundation programmes, language centres, and admissions teams with a standardised academic English diagnostic.',
+        cta: 'Contact Institutional Sales',
+        sections: [
+          {
+            heading: 'Institutional Licensing',
+            body: 'License EDT for pre-arrival screening, foundation-year placement, and ongoing language support across faculties.',
+          },
+          {
+            heading: 'Consistent Benchmarking',
+            body: 'Align placement and support decisions to a shared CEFR-oriented framework with dimension-level detail.',
+          },
+          {
+            heading: 'Dedicated Onboarding',
+            body: 'Work with our team on custom voucher volumes, reporting requirements, and rollout planning for your institution.',
+          },
+        ],
+      },
+      collaboration: {
+        tag: 'For Collaboration',
+        title: 'Partner With EDT.',
+        subtitle: 'Collaborate on research, curriculum design, and bespoke diagnostic deployments for education partners.',
+        cta: 'Discuss a Partnership',
+        sections: [
+          {
+            heading: 'Research Partnerships',
+            body: 'Explore joint studies on academic English readiness, diagnostic validity, and learner progression with our team.',
+          },
+          {
+            heading: 'Custom Deployments',
+            body: 'Co-design diagnostic workflows for publishers, training providers, and regional education initiatives.',
+          },
+          {
+            heading: 'Long-Term Collaboration',
+            body: 'From pilot programmes to full-scale rollouts, we support partners with technical integration and content alignment.',
+          },
+        ],
+      },
     },
     landing: {
       tag: 'Professional Diagnostic',
@@ -44,6 +128,41 @@ export const messages = {
       verifying: 'Verifying...',
       invalid: 'Voucher could not be verified. Please check the code and try again.',
       summary: ['72 questions', '60 minutes', '12 dimensions', 'CEFR C1/C2'],
+      showCode: 'Show voucher code',
+      hideCode: 'Hide voucher code',
+      purchase: 'Purchase Voucher',
+    },
+    purchase: {
+      tag: 'Get Started',
+      title: 'Choose Your Diagnostic Plan',
+      subtitle: 'Select the voucher package that fits your learning goals. Payment integration coming in a future release.',
+      selectPlan: 'Select a plan to begin your academic readiness journey.',
+      plans: [
+        {
+          name: 'Individual Diagnostic',
+          price: 'HK$ 298',
+          features: ['1 single-use voucher', '72 questions, 60 minutes', 'Full CEFR-aligned report', '12-dimension competency profile'],
+          cta: 'Select Plan',
+        },
+        {
+          name: 'Student Bundle',
+          price: 'HK$ 798',
+          features: ['3 single-use vouchers', 'Track progress across attempts', 'Ideal for retakes and revision', 'Full report for each test'],
+          cta: 'Select Plan',
+        },
+        {
+          name: 'Classroom Pack',
+          price: 'HK$ 2,480',
+          features: ['25 single-use vouchers', 'Designed for schools and tutors', 'Bulk cohort reporting (coming soon)', 'Priority email support'],
+          cta: 'Select Plan',
+        },
+        {
+          name: 'Institutional',
+          price: 'Contact us',
+          features: ['Custom voucher volume', 'University and faculty licensing', 'Dedicated onboarding support', 'Tailored reporting options'],
+          cta: 'Contact Sales',
+        },
+      ],
     },
     info: {
       title: 'Before You Begin',
@@ -62,10 +181,15 @@ export const messages = {
       previous: 'Previous',
       next: 'Next',
       submit: 'Submit Test',
+      submitNow: 'Submit Now',
       submitting: 'Submitting your test, please wait...',
       submitTitle: 'Submit your test?',
       submitBody: 'This action cannot be undone.',
       cancel: 'Cancel',
+      leaveTitle: 'Unsaved Changes',
+      leaveBody: 'Any changes you made will be lost if you leave this page. Are you sure you want to leave?',
+      leaveConfirm: 'Leave Page',
+      leaveCancel: 'Cancel',
     },
     report: {
       submitted: 'Test Submitted Successfully',
@@ -102,7 +226,7 @@ export const messages = {
       yourAnswer: 'Your answer',
       correct: 'Correct',
       notAnswered: 'Not answered',
-      downloadPdf: 'Download PDF',
+      downloadPdf: 'Download Report (PDF)',
       duration: 'Duration',
       backendError: 'Results could not be saved to the server. Your diagnostic report is shown below.',
       dimensionNarratives: {
@@ -128,6 +252,90 @@ export const messages = {
       universities: '大學',
       collaboration: '合作',
       login: '登入',
+      home: '主頁',
+      back: '返回',
+    },
+    marketing: {
+      learners: {
+        tag: '學習者',
+        title: '升讀大學前先了解你的準備程度。',
+        subtitle: 'EDT 透過嚴謹的 72 題診斷及詳細能力輪廓，協助高階學習者評估 C1 及 C2 英語水平。',
+        cta: '開始診斷測試',
+        sections: [
+          {
+            heading: '精準評估 C1 及 C2',
+            body: '測試涵蓋高階語法、詞彙及學術閱讀準備度，讓你在面對嚴謹學習前清楚了解現有水平。',
+          },
+          {
+            heading: '可操作的報告',
+            body: '結果對應 12 個診斷維度及 CEFR 等級，標示需要優先鞏固的範疇。',
+          },
+          {
+            heading: '規劃下一步',
+            body: '按報告針對弱項溫習，追蹤重考進度，自信迎接大學英語學習。',
+          },
+        ],
+      },
+      schools: {
+        tag: '學校',
+        title: '以數據支援每位學生。',
+        subtitle: '為教師及統籌人員提供一致的高中英語準備度診斷視角，掌握整班或整級表現。',
+        cta: '了解課堂方案',
+        sections: [
+          {
+            heading: '課堂憑證套裝',
+            body: '大量部署一次性憑證，用於模擬診斷、銜接課程及針對性輔導小組。',
+          },
+          {
+            heading: '群組分析',
+            body: '找出班級或年級的共通弱項，支援課程規劃及溫習重點安排。',
+          },
+          {
+            heading: '報告路線圖',
+            body: '批量群組儀表板及匯出工具將於未來版本推出，簡化學校層級報告流程。',
+          },
+        ],
+      },
+      universities: {
+        tag: '大學',
+        title: '大規模招生準備度評估。',
+        subtitle: '支援基礎課程、語言中心及招生團隊，提供標準化學術英語診斷。',
+        cta: '聯絡機構銷售',
+        sections: [
+          {
+            heading: '機構授權',
+            body: '授權 EDT 用於入學前評估、基礎年級分班及持續語言支援。',
+          },
+          {
+            heading: '一致基準',
+            body: '以共享的 CEFR 框架及維度分析，支援分班及輔導決策。',
+          },
+          {
+            heading: '專屬上手支援',
+            body: '與我們團隊協作，自訂憑證數量、報告需求及推行計劃。',
+          },
+        ],
+      },
+      collaboration: {
+        tag: '合作',
+        title: '與 EDT 攜手合作。',
+        subtitle: '與教育夥伴共同推動研究、課程設計及度身訂造的診斷部署。',
+        cta: '洽談合作',
+        sections: [
+          {
+            heading: '研究合作',
+            body: '與我們探討學術英語準備度、診斷效度及學習進程的聯合研究。',
+          },
+          {
+            heading: '自訂部署',
+            body: '與出版社、培訓機構及區域教育計劃共同設計診斷流程。',
+          },
+          {
+            heading: '長期夥伴關係',
+            body: '由試行計劃至全面推行，我們提供技術整合及內容對接支援。',
+          },
+        ],
+      },
     },
     landing: {
       tag: '專業診斷測試',
@@ -164,6 +372,41 @@ export const messages = {
       verifying: '驗證中...',
       invalid: '未能驗證憑證。請檢查代碼後再試。',
       summary: ['72 題', '60 分鐘', '12 個維度', 'CEFR C1/C2'],
+      showCode: '顯示憑證代碼',
+      hideCode: '隱藏憑證代碼',
+      purchase: '購買憑證',
+    },
+    purchase: {
+      tag: '開始使用',
+      title: '選擇你的診斷方案',
+      subtitle: '選擇最適合你學習目標的憑證組合。付款功能將於下一階段推出。',
+      selectPlan: '選擇方案，開始你的學術英語準備旅程。',
+      plans: [
+        {
+          name: '個人診斷',
+          price: 'HK$ 298',
+          features: ['1 張一次性憑證', '72 題，60 分鐘', '完整 CEFR 對應報告', '12 個能力維度分析'],
+          cta: '選擇方案',
+        },
+        {
+          name: '學生組合',
+          price: 'HK$ 798',
+          features: ['3 張一次性憑證', '追蹤多次測試進度', '適合重考及溫習', '每次測試均有完整報告'],
+          cta: '選擇方案',
+        },
+        {
+          name: '課堂套裝',
+          price: 'HK$ 2,480',
+          features: ['25 張一次性憑證', '專為學校及導師而設', '批量群組報告（即將推出）', '優先電郵支援'],
+          cta: '選擇方案',
+        },
+        {
+          name: '機構方案',
+          price: '聯絡我們',
+          features: ['自訂憑證數量', '大學及學院授權', '專屬上手支援', '度身訂造報告選項'],
+          cta: '聯絡銷售',
+        },
+      ],
     },
     info: {
       title: '開始之前',
@@ -182,10 +425,15 @@ export const messages = {
       previous: '上一題',
       next: '下一題',
       submit: '提交測試',
+      submitNow: '立即提交',
       submitting: '正在提交測試，請稍候...',
       submitTitle: '提交測試？',
       submitBody: '提交後將不能更改答案。',
       cancel: '取消',
+      leaveTitle: '未儲存的變更',
+      leaveBody: '若離開此頁面，你所做的變更將會遺失。確定要離開嗎？',
+      leaveConfirm: '離開頁面',
+      leaveCancel: '取消',
     },
     report: {
       submitted: '測試已成功提交',

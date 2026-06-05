@@ -3,6 +3,14 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: ['html2canvas-pro'],
+  },
+  resolve: {
+    alias: {
+      html2canvas: 'html2canvas-pro',
+    },
+  },
   server: {
     proxy: {
       '/api': {

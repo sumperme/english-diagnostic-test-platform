@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { LocaleSwitcher } from '../components/LocaleSwitcher';
+import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
 import { ANSWER_KEY, PART_A, PART_B } from '../data/questions';
 import { useLocale } from '../i18n/LocaleContext';
@@ -60,7 +60,7 @@ function ReviewSection({
   );
 }
 
-export function ResultsScreen({ result }: { result: ReportResult }) {
+export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome: () => void }) {
   const { t, language } = useLocale();
   const [filter, setFilter] = useState<Filter>('all');
   const [isExporting, setIsExporting] = useState(false);
@@ -85,6 +85,8 @@ export function ResultsScreen({ result }: { result: ReportResult }) {
     try {
       await document.fonts.ready;
       await downloadReportPdf(reportRef.current, `EDT-Report-${result.candidateInfo.id || 'candidate'}.pdf`);
+    } catch (error) {
+      console.error('PDF export failed:', error);
     } finally {
       setIsExporting(false);
     }
@@ -92,20 +94,19 @@ export function ResultsScreen({ result }: { result: ReportResult }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="bg-edt-forest px-4 py-8 text-white no-print">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1 text-sm font-medium text-edt-neon">
-              {result.autoSubmitted ? t.report.autoSubmitted : t.report.submitted}
-            </div>
-            <h1 className="text-3xl font-extrabold">{t.report.title}</h1>
-            <p className="mt-1 text-sm text-edt-soft/70">{t.report.subtitle}</p>
+      <EdtNavBar variant="app" onLogoClick={onHome} onBack={onHome} />
+
+      <div className="-mt-nav bg-edt-forest px-4 pb-8 pt-nav text-white no-print">
+        <div className="mx-auto max-w-[1200px]">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1 text-sm font-medium text-edt-neon">
+            {result.autoSubmitted ? t.report.autoSubmitted : t.report.submitted}
           </div>
-          <LocaleSwitcher />
+          <h1 className="text-3xl font-extrabold">{t.report.title}</h1>
+          <p className="mt-1 text-sm text-edt-soft/70">{t.report.subtitle}</p>
         </div>
       </div>
 
-      <main className="mx-auto max-w-3xl px-4 py-8">
+      <main className="mx-auto w-full max-w-[1200px] px-4 py-8">
         <div ref={reportRef} id="report-export-root" className="space-y-8">
           <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
             <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.candidateInfo}</h2>
