@@ -1,6 +1,6 @@
 import { FormEvent, useRef, useState } from 'react';
 import { EdtNavBar } from '../components/EdtNavBar';
-import { verifyVoucher } from '../lib/api';
+import { verifyVoucher, ApiError } from '../lib/api';
 import { saveSession } from '../lib/session';
 import { useLocale } from '../i18n/LocaleContext';
 import { heroBackgroundStyle } from '../lib/landingAssets';
@@ -31,8 +31,14 @@ export function VoucherScreen({
       const session = await verifyVoucher(code.trim());
       saveSession(session);
       onSuccess(session);
-    } catch {
-      setError(t.voucher.invalid);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'ALREADY_USED') {
+        setError(t.voucher.alreadyUsed);
+      } else if (error instanceof ApiError && error.code === 'NOT_FOUND') {
+        setError(t.voucher.notFound);
+      } else {
+        setError(t.voucher.invalid);
+      }
       setCode('');
       inputRef.current?.focus();
     } finally {

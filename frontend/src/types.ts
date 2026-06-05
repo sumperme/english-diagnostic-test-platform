@@ -12,12 +12,14 @@ export type CandidateInfo = {
   id: string;
   testDate: number;
   mode: string;
+  userGroup: string;
 };
 
 export type Session = {
   sessionToken: string;
   expiresAt: number;
   voucherCode?: string;
+  userGroup: string;
 };
 
 export type DimensionScore = {
@@ -34,9 +36,13 @@ export type DimensionScore = {
 
 export type BackendData = {
   submissionId: string;
+  userGroup: string;
   percentileRank: number | null;
   cohortSize: number;
   cohortMean: number | null;
+  groupPercentileRank: number | null;
+  groupCohortSize: number;
+  groupCohortMean: number | null;
 };
 
 export type ReportResult = {
@@ -63,4 +69,27 @@ export type ReportResult = {
   };
   backendData?: BackendData;
   backendError?: boolean;
+};
+
+export type AdminSummary = {
+  total: number;
+  used: number;
+  available: number;
+  assigned: number;
+};
+
+export type AdminVoucher = {
+  code: string;
+  used: boolean;
+  usedAt: number | null;
+  userGroup: string;
+  educationLevel: string | null;
+  remark: string | null;
+  soldTo: string | null;
+};
+
+export type AdminVoucherList = {
+  vouchers: AdminVoucher[];
+  limit: number;
+  offset: number;
 };

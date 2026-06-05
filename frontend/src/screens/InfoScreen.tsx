@@ -5,11 +5,13 @@ import { heroBackgroundStyle } from '../lib/landingAssets';
 import type { CandidateInfo, MarketingPage } from '../types';
 
 export function InfoScreen({
+  userGroup,
   onNext,
   onNavigate,
   onLogin,
   onLogoClick,
 }: {
+  userGroup: string;
   onNext: (info: CandidateInfo) => void;
   onNavigate: (page: MarketingPage) => void;
   onLogin: () => void;
@@ -27,6 +29,7 @@ export function InfoScreen({
       id: cid.trim() || 'N/A',
       testDate: Date.now(),
       mode: 'Online',
+      userGroup,
     });
   };
 
@@ -41,8 +44,11 @@ export function InfoScreen({
               <div className="border-l-4 border-edt-neon pl-4 text-sm uppercase tracking-[0.22em] text-edt-neon">
                 CEFR C1 / C2
               </div>
-              <h1 className={`my-5 text-4xl leading-tight md:text-5xl ${headingFont}`}>{t.info.title}</h1>
-              <p className="max-w-xl text-base leading-8 text-edt-soft/85">{t.info.subtitle}</p>
+            <h1 className={`my-5 text-4xl leading-tight md:text-5xl ${headingFont}`}>{t.info.title}</h1>
+            <div className="mb-4 inline-flex items-center rounded-full border border-[rgba(170,169,90,0.35)] bg-edt-forest/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-edt-neon">
+              {t.info.userGroup}: {userGroup}
+            </div>
+            <p className="max-w-xl text-base leading-8 text-edt-soft/85">{t.info.subtitle}</p>
             </div>
 
             <form

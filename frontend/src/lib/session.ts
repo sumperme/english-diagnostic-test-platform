@@ -6,13 +6,16 @@ export function loadSession(): Session | null {
   const raw = sessionStorage.getItem(SESSION_KEY);
   if (!raw) return null;
 
-  try {
-    const session = JSON.parse(raw) as Session;
-    if (!session.sessionToken || session.expiresAt <= Date.now()) {
-      clearSession();
-      return null;
-    }
-    return session;
+    try {
+      const session = JSON.parse(raw) as Session;
+      if (!session.sessionToken || session.expiresAt <= Date.now()) {
+        clearSession();
+        return null;
+      }
+      return {
+        ...session,
+        userGroup: session.userGroup ?? 'General Learner',
+      };
   } catch {
     clearSession();
     return null;

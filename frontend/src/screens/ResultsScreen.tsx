@@ -110,6 +110,9 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
         <div ref={reportRef} id="report-export-root" className="space-y-8">
           <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
             <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.candidateInfo}</h2>
+            <div className="mb-4 inline-flex items-center rounded-full border border-edt-forest/20 bg-edt-forest/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-edt-forest">
+              {t.report.userGroup}: {result.candidateInfo.userGroup}
+            </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
                 [t.report.name, result.candidateInfo.name],
@@ -155,20 +158,45 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
           {result.backendData ? (
             <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
               <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.cohortRanking}</h3>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-xl bg-sky-50 p-4 text-center">
-                  <p className="text-xs font-semibold text-slate-500">Percentile</p>
-                  <p className="text-3xl font-extrabold text-sky-600">{result.backendData.percentileRank ?? '-'}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-4 text-center">
-                  <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
-                  <p className="text-3xl font-extrabold text-slate-700">{result.backendData.cohortMean ?? '-'}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-4 text-center">
-                  <p className="text-xs font-semibold text-slate-500">Cohort size</p>
-                  <p className="text-3xl font-extrabold text-slate-700">{result.backendData.cohortSize}</p>
-                </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                {[
+                  {
+                    title: t.report.studyGroup,
+                    percentile: result.backendData.groupPercentileRank,
+                    mean: result.backendData.groupCohortMean,
+                    size: result.backendData.groupCohortSize,
+                    accent: 'border-emerald-100 bg-emerald-50/40',
+                    valueCls: 'text-emerald-700',
+                  },
+                  {
+                    title: t.report.allLearners,
+                    percentile: result.backendData.percentileRank,
+                    mean: result.backendData.cohortMean,
+                    size: result.backendData.cohortSize,
+                    accent: 'border-sky-100 bg-sky-50/40',
+                    valueCls: 'text-sky-700',
+                  },
+                ].map((cohort) => (
+                  <div key={cohort.title} className={`rounded-xl border p-4 ${cohort.accent}`}>
+                    <p className="mb-3 text-sm font-bold text-slate-700">{cohort.title}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl bg-white/80 p-3 text-center">
+                        <p className="text-xs font-semibold text-slate-500">{t.report.percentile}</p>
+                        <p className={`text-2xl font-extrabold ${cohort.valueCls}`}>{cohort.percentile ?? '-'}</p>
+                      </div>
+                      <div className="rounded-xl bg-white/80 p-3 text-center">
+                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
+                        <p className="text-2xl font-extrabold text-slate-700">{cohort.mean ?? '-'}</p>
+                      </div>
+                      <div className="rounded-xl bg-white/80 p-3 text-center">
+                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortSize}</p>
+                        <p className="text-2xl font-extrabold text-slate-700">{cohort.size}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
+              <p className="mt-4 text-xs text-slate-400">{t.report.basedOn}</p>
             </section>
           ) : result.backendError ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 no-print">

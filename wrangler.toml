@@ -22,3 +22,4 @@ migrations_dir = "migrations"
 [vars]
 ALLOWED_ORIGIN = "https://eng-diagnostic.tzy667.workers.dev"
 SESSION_TTL_SECONDS = "7200"
+ADMIN_PASSWORD = "EDT-Aa2026!"

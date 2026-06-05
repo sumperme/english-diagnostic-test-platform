@@ -1,8 +1,11 @@
+import { computePercentileStats, handleAdminRequest } from './admin';
+
 type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
   ALLOWED_ORIGIN?: string;
   SESSION_TTL_SECONDS?: string;
+  ADMIN_PASSWORD?: string;
 };
 
 type VerifyVoucherRequest = {
@@ -17,6 +20,8 @@ type SubmissionPayload = {
   };
 };
 
+const DEFAULT_USER_GROUP = 'General Learner';
+
 const json = (body: unknown, init: ResponseInit = {}, origin?: string) =>
   new Response(JSON.stringify(body), {
     ...init,
@@ -29,8 +34,8 @@ const json = (body: unknown, init: ResponseInit = {}, origin?: string) =>
 
 const corsHeaders = (origin?: string) => ({
   'Access-Control-Allow-Origin': origin ?? '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+  'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Admin-Password',
 });
 
 const normalizeCode = (code: string) => code.trim().toUpperCase();
@@ -58,6 +63,20 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
     return json({ error: 'Voucher code is required' }, { status: 400 }, origin);
   }
 
+  const voucher = await env.DB.prepare(
+    'SELECT code, used_at, user_group FROM vouchers WHERE code = ?',
+  )
+    .bind(code)
+    .first<{ code: string; used_at: number | null; user_group: string | null }>();
+
+  if (!voucher) {
+    return json({ error: 'NOT_FOUND' }, { status: 401 }, origin);
+  }
+
+  if (voucher.used_at != null) {
+    return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
+  }
+
   const now = Date.now();
   const sessionToken = crypto.randomUUID();
   const ttl = Number(env.SESSION_TTL_SECONDS ?? 7200) * 1000;
@@ -70,14 +89,16 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
     .run();
 
   if (!update.success || update.meta.changes !== 1) {
-    return json({ error: 'Voucher is invalid or has already been used' }, { status: 401 }, origin);
+    return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
   }
 
   await env.DB.prepare('INSERT INTO sessions (token, voucher_code, created_at, expires_at) VALUES (?, ?, ?, ?)')
     .bind(sessionToken, code, now, expiresAt)
     .run();
 
-  return json({ sessionToken, expiresAt, voucherCode: code }, undefined, origin);
+  const userGroup = voucher.user_group?.trim() || DEFAULT_USER_GROUP;
+
+  return json({ sessionToken, expiresAt, voucherCode: code, userGroup }, undefined, origin);
 }
 
 async function getSession(request: Request, env: Env) {
@@ -86,9 +107,11 @@ async function getSession(request: Request, env: Env) {
   if (!match) return null;
 
   const token = match[1];
-  const row = await env.DB.prepare('SELECT token, expires_at FROM sessions WHERE token = ?')
+  const row = await env.DB.prepare(
+    'SELECT s.token, s.expires_at, s.voucher_code, v.user_group FROM sessions s LEFT JOIN vouchers v ON v.code = s.voucher_code WHERE s.token = ?',
+  )
     .bind(token)
-    .first<{ token: string; expires_at: number }>();
+    .first<{ token: string; expires_at: number; voucher_code: string; user_group: string | null }>();
 
   if (!row || row.expires_at <= Date.now()) return null;
   return row;
@@ -104,24 +127,45 @@ async function submit(request: Request, env: Env, origin?: string) {
     return json({ error: 'Submission payload is missing total score' }, { status: 400 }, origin);
   }
 
+  const userGroup = session.user_group?.trim() || DEFAULT_USER_GROUP;
   const now = Date.now();
   const submissionId = crypto.randomUUID();
 
-  await env.DB.prepare('INSERT INTO submissions (id, session_token, payload, total_score, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now)
+  await env.DB.prepare(
+    'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group) VALUES (?, ?, ?, ?, ?, ?)',
+  )
+    .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup)
     .run();
 
-  const stats = await env.DB.prepare(
+  const allStats = await env.DB.prepare(
     'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score <= ? THEN 1 ELSE 0 END) as atOrBelow FROM submissions',
   )
     .bind(totalScore)
     .first<{ cohortSize: number; cohortMean: number | null; atOrBelow: number }>();
 
-  const cohortSize = Number(stats?.cohortSize ?? 1);
-  const cohortMean = stats?.cohortMean == null ? null : Math.round(Number(stats.cohortMean) * 10) / 10;
-  const percentileRank = cohortSize > 0 ? Math.round((Number(stats?.atOrBelow ?? 1) / cohortSize) * 100) : null;
+  const groupStats = await env.DB.prepare(
+    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score <= ? THEN 1 ELSE 0 END) as atOrBelow FROM submissions WHERE user_group = ?',
+  )
+    .bind(totalScore, userGroup)
+    .first<{ cohortSize: number; cohortMean: number | null; atOrBelow: number }>();
 
-  return json({ submissionId, percentileRank, cohortSize, cohortMean }, undefined, origin);
+  const all = computePercentileStats(allStats);
+  const group = computePercentileStats(groupStats);
+
+  return json(
+    {
+      submissionId,
+      userGroup,
+      percentileRank: all.percentileRank,
+      cohortSize: all.cohortSize,
+      cohortMean: all.cohortMean,
+      groupPercentileRank: group.percentileRank,
+      groupCohortSize: group.cohortSize,
+      groupCohortMean: group.cohortMean,
+    },
+    undefined,
+    origin,
+  );
 }
 
 export default {
@@ -140,6 +184,11 @@ export default {
     try {
       if (url.pathname === '/api/health' && request.method === 'GET') {
         return json({ ok: true }, undefined, origin);
+      }
+
+      const adminResponse = await handleAdminRequest(request, env, origin, json);
+      if (adminResponse) {
+        return adminResponse;
       }
 
       if (url.pathname === '/api/verify-voucher' && request.method === 'POST') {
