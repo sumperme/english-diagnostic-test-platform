@@ -176,10 +176,12 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
             </section>
           ) : null}
 
-          <section className="rounded-2xl border border-slate-100 bg-white print-section">
-            <div className="p-6 pb-2">
+          <section className="overflow-visible rounded-2xl border border-slate-100 bg-white print-section">
+            <div className="overflow-visible p-6 pb-2">
               <p className="mb-2 text-center text-xs font-semibold uppercase tracking-widest text-slate-400">{t.report.dimensionsTitle}</p>
-              <RadarChart dimensions={result.dimensions} />
+              <div className="report-radar-export mx-auto w-1/2 max-w-[50%] overflow-visible">
+                <RadarChart dimensions={result.dimensions} />
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
               {result.dimensions.map((dimension) => (

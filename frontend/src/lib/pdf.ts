@@ -10,6 +10,34 @@ async function loadPdfLibraries() {
   return { html2canvas, jsPDF };
 }
 
+function prepareReportClone(clonedElement: HTMLElement) {
+  clonedElement.style.maxHeight = 'none';
+  clonedElement.style.overflow = 'visible';
+
+  clonedElement.querySelectorAll('*').forEach((node) => {
+    if (node instanceof HTMLElement) {
+      node.style.overflow = 'visible';
+    }
+  });
+
+  clonedElement.querySelectorAll('.report-radar-export').forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    node.style.width = '50%';
+    node.style.maxWidth = '50%';
+    node.style.marginLeft = 'auto';
+    node.style.marginRight = 'auto';
+    node.style.overflow = 'visible';
+  });
+
+  clonedElement.querySelectorAll('.report-radar-export svg').forEach((node) => {
+    if (!(node instanceof SVGElement)) return;
+    node.style.width = '100%';
+    node.style.maxWidth = '100%';
+    node.style.height = 'auto';
+    node.style.overflow = 'visible';
+  });
+}
+
 export async function downloadReportPdf(element: HTMLElement, filename: string) {
   const { html2canvas, jsPDF } = await loadPdfLibraries();
 
@@ -20,8 +48,7 @@ export async function downloadReportPdf(element: HTMLElement, filename: string) 
     logging: false,
     onclone: (_document, clonedElement) => {
       if (clonedElement instanceof HTMLElement) {
-        clonedElement.style.maxHeight = 'none';
-        clonedElement.style.overflow = 'visible';
+        prepareReportClone(clonedElement);
       }
     },
   });

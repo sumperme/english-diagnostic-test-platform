@@ -29,7 +29,12 @@ export function RadarChart({ dimensions }: { dimensions: DimensionScore[] }) {
   const dataPoly = dimensions.map((dimension, i) => point(i, dimension.score).join(',')).join(' ');
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto w-full max-w-lg select-none">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      overflow="visible"
+      preserveAspectRatio="xMidYMid meet"
+      className="mx-auto block h-auto w-full max-w-full select-none overflow-visible"
+    >
       {[1, 2, 3, 4, 5].map((level) => (
         <polygon
           key={level}
