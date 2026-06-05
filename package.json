@@ -12,6 +12,7 @@
     "typecheck": "npm run typecheck --workspace=frontend && npm run typecheck --workspace=worker",
     "worker:dev": "npm run dev --workspace=worker",
     "worker:deploy": "npm run deploy --workspace=worker",
-    "deploy": "wrangler deploy -c wrangler.toml"
+    "deploy": "wrangler deploy -c wrangler.toml",
+    "publish:ui": "powershell -ExecutionPolicy Bypass -File ./scripts/publish-ui.ps1"
   }
 }
