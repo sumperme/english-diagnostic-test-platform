@@ -16,9 +16,50 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+# Paths that must never be committed by this script (local/private/generated).
+$privatePathPatterns = @(
+    '^Evouchers\.txt$',
+    '^seed-vouchers\.sql$',
+    '^scripts/local-preview\.ps1$',
+    '^\.dev\.vars$',
+    '^\.cursor/',
+    '^Client_Feedback/',
+    '^frontend/dist/',
+    '^\.wrangler/',
+    '^worker/\.wrangler/'
+)
+
 function Write-Step([string]$text) {
     Write-Host ""
     Write-Host "==> $text" -ForegroundColor Cyan
+}
+
+function Test-PrivatePath([string]$path) {
+    $normalized = ($path -replace '\\', '/').Trim()
+    foreach ($pattern in $privatePathPatterns) {
+        if ($normalized -match $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-ChangedPaths {
+    $entries = @()
+    $lines = git status --porcelain
+    foreach ($line in $lines) {
+        if ($line.Length -lt 4) {
+            continue
+        }
+
+        $path = $line.Substring(3).Trim()
+        if ($line.StartsWith('R ') -or $line.StartsWith('C ')) {
+            $path = ($path -split ' -> ')[-1].Trim()
+        }
+
+        $entries += ($path -replace '\\', '/')
+    }
+    return $entries | Select-Object -Unique
 }
 
 Write-Step "Project: $repoRoot"
@@ -46,13 +87,28 @@ if (-not $SkipBuild) {
 }
 
 Write-Step "Checking for changes..."
-$status = git status --porcelain
-if (-not $status) {
+$changedPaths = Get-ChangedPaths
+if (-not $changedPaths) {
     Write-Host "Nothing to commit. Working tree is clean." -ForegroundColor Yellow
     exit 0
 }
 
 git status -sb
+
+$blockedPaths = $changedPaths | Where-Object { Test-PrivatePath $_ }
+$publishablePaths = $changedPaths | Where-Object { -not (Test-PrivatePath $_) }
+
+if ($blockedPaths) {
+    Write-Host ""
+    Write-Host "Skipping private/local files:" -ForegroundColor Yellow
+    $blockedPaths | ForEach-Object { Write-Host "  $_" }
+}
+
+if (-not $publishablePaths) {
+    Write-Host ""
+    Write-Host "No publishable changes (only private/local files?)." -ForegroundColor Yellow
+    exit 0
+}
 
 if (-not $Message) {
     $Message = Read-Host "Commit message (e.g. Update quiz button styling)"
@@ -61,13 +117,24 @@ if (-not $Message) {
     }
 }
 
-Write-Step "Staging changes..."
-git add -A
+Write-Step "Staging publishable changes only..."
+foreach ($path in $publishablePaths) {
+    git add -- $path
+    if ($LASTEXITCODE -ne 0) {
+        throw "git add failed for: $path"
+    }
+}
 
-$staged = git diff --cached --name-only
+$staged = git diff --cached --name-only | ForEach-Object { ($_ -replace '\\', '/').Trim() }
 if (-not $staged) {
-    Write-Host "No staged changes after git add (ignored files only?)." -ForegroundColor Yellow
+    Write-Host "No staged changes after filtering." -ForegroundColor Yellow
     exit 0
+}
+
+$leakedPrivate = $staged | Where-Object { Test-PrivatePath $_ }
+if ($leakedPrivate) {
+    git reset HEAD -- $leakedPrivate
+    throw "Blocked private files from commit: $($leakedPrivate -join ', ')"
 }
 
 Write-Host "Staged files:"

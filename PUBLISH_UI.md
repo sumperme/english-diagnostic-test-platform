@@ -36,6 +36,8 @@ The script will:
 | `.\scripts\publish-ui.ps1 -SkipBuild` | Only docs/config; no local build |
 | `.\scripts\publish-ui.ps1 -DeployLocal` | Also run `wrangler deploy` on your PC (bypass slow CI or emergency fix) |
 
+The script stages **only publishable files** (frontend, worker, migrations, docs). It skips vouchers, build output, Wrangler state, and local-only scripts such as `scripts/local-preview.ps1`.
+
 ---
 
 ## What you may need to do manually
@@ -95,31 +97,71 @@ env.ASSETS    Assets
 - Confirm Cloudflare deployment **finished** (not still building)
 - Confirm you pushed to **`main`** (production branch)
 
+### 6. If you changed the database schema (D1 migrations)
+
+UI publish does **not** apply D1 migrations automatically. After a migration is merged to `main`, run once:
+
+```powershell
+npx wrangler d1 migrations apply edt-diagnostic --remote -c wrangler.toml
+```
+
+For local preview, migrations run automatically via `local-preview.ps1`.
+
+### 7. Admin page (`/admin`)
+
+Production admin: https://eng-diagnostic.tzy667.workers.dev/admin
+
+Local admin (after `local-preview.ps1`): http://localhost:5173/admin
+
+Password is set in `wrangler.toml` as `ADMIN_PASSWORD` (default documented in deployment guide). Admin changes (voucher groups, metadata) use the **remote** D1 database — not the local one used during preview.
+
 ---
 
 ## What the script never commits
 
-These stay local (`.gitignore`):
+These stay local and are skipped by `publish-ui.ps1`:
 
 - `Evouchers.txt`
+- `seed-vouchers.sql`
+- `scripts/local-preview.ps1` (local dev helper)
 - `frontend/dist/` (built on Cloudflare during deploy)
-- `.cursor/`, `Client_Feedback/`
+- `.dev.vars`, `.wrangler/`, `.cursor/`, `Client_Feedback/`
+
+These **can** be committed when changed: `PUBLISH_UI.md`, `scripts/publish-ui.ps1`, worker/frontend code, `migrations/`.
 
 ---
 
 ## Local preview before publishing
 
-```powershell
-npm run worker:dev
-```
-
-Second terminal:
+One command (opens Worker + Vite in new windows and your browser):
 
 ```powershell
-npm run dev
+.\scripts\local-preview.ps1
 ```
 
-Open http://localhost:5173 — API proxied to the local worker.
+Or via npm:
+
+```powershell
+npm run preview:local
+```
+
+The script will:
+
+1. Apply local D1 migrations
+2. Seed vouchers from `Evouchers.txt` into the **local** database
+3. Start `npm run worker:dev` (Terminal 1)
+4. Start `npm run dev` (Terminal 2)
+5. Open http://localhost:5173
+
+Use any code from `Evouchers.txt` (e.g. `4K2M-9R7T-1F5P`). Vite proxies `/api/*` to `http://127.0.0.1:8787`.
+
+Admin UI locally: http://localhost:5173/admin (same `ADMIN_PASSWORD` as production).
+
+Options:
+
+| Command | When to use |
+|---------|-------------|
+| `.\scripts\local-preview.ps1 -SkipSeed` | DB already seeded; just restart servers |
 
 ---
 

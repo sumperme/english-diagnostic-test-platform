@@ -27,7 +27,7 @@ export function LandingScreen({
             <div className="border-l-4 border-edt-neon pl-4 text-sm uppercase tracking-[0.22em] text-edt-neon">
               {t.landing.tag}
             </div>
-            <h1 className={`my-6 text-5xl leading-tight md:text-6xl ${headingFont}`}>{t.landing.title}</h1>
+            <h1 className="my-6 font-sans text-5xl leading-tight md:text-6xl">{t.landing.title}</h1>
             <p className="max-w-xl text-base leading-8 text-edt-soft/85">{t.landing.subtitle}</p>
             <PrimaryCTA onClick={onStart} className="mt-10">
               {t.landing.cta}
@@ -41,7 +41,8 @@ export function LandingScreen({
           <div>
             <h2 className={`mb-5 text-4xl text-edt-gold md:text-5xl ${headingFont}`}>{t.landing.reportTitle}</h2>
             <p className="text-base leading-8 text-edt-soft/80">{t.landing.reportBody}</p>
-            <p className="mt-5 italic text-edt-neon">{t.landing.reportQuote}</p>
+            {/* <p className="mt-5 italic text-edt-neon">{t.landing.reportQuote}</p> */}
+    
           </div>
           <div className="relative flex h-[400px] items-center justify-center overflow-hidden bg-edt-indigo">
             <img className="h-full w-full object-cover opacity-60" src={reportImage} alt="" />
@@ -65,8 +66,62 @@ export function LandingScreen({
         </div>
       </section>
 
-      <footer className="border-t border-white/5 bg-[#0d1615] py-10 text-center text-xs text-edt-olive">
-        {t.landing.footer}
+      <section className="testimonials border-t border-[rgba(130,129,109,0.1)] bg-[rgba(65,64,102,0.1)] py-20">
+        <div className="mx-auto max-w-content px-6 md:px-10">
+          <div className="text-center">
+            <h2 className={`text-4xl md:text-5xl ${headingFont}`}>{t.landing.testimonialsTitle}</h2>
+          </div>
+          <div className="mt-12 grid gap-10 lg:grid-cols-2">
+            {t.landing.testimonials.map((testimonial) => (
+              <article
+                key={testimonial.author}
+                className="border-l-2 border-edt-gold bg-[rgba(27,45,42,0.5)] p-10"
+              >
+                <p className="mb-5 text-lg italic leading-8 text-edt-soft">&ldquo;{testimonial.quote}&rdquo;</p>
+                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-edt-neon">{testimonial.author}</div>
+              </article>
+            ))}
+          </div>
+          <div className="mt-16 flex flex-wrap items-center justify-center gap-12 opacity-70">
+            <div className="w-full border-t border-[rgba(170,169,90,0.3)] pt-5 text-center font-display text-xl text-edt-gold">
+              {t.landing.supportingOrgLabel}
+              <br />
+              {t.landing.supportingOrgName}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-white/5 bg-[#0d1615] px-6 pb-10 pt-20 md:px-10">
+        <div className="mx-auto max-w-content">
+          <div className="mb-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="lg:col-span-2">
+              <button
+                type="button"
+                onClick={onLogoClick}
+                className="font-display text-3xl font-bold tracking-[0.12em] text-edt-neon transition-colors hover:text-edt-soft"
+              >
+                EDT
+              </button>
+              <p className="mt-5 text-sm leading-7 text-edt-olive">{t.landing.footerTagline}</p>
+            </div>
+            {t.landing.footerColumns.map((column) => (
+              <div key={column.heading}>
+                <h4 className="mb-6 text-sm uppercase tracking-[0.14em] text-edt-neon">{column.heading}</h4>
+                <ul className="space-y-3">
+                  {column.links.map((link) => (
+                    <li key={link}>
+                      <a href="#" className="text-sm text-edt-olive transition-colors hover:text-edt-soft">
+                        {link}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-white/5 pt-10 text-center text-xs text-edt-olive">{t.landing.footerCopyright}</div>
+        </div>
       </footer>
     </div>
   );

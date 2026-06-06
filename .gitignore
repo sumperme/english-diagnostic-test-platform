@@ -6,7 +6,7 @@ frontend/tsconfig.tsbuildinfo
 *.local
 Evouchers.txt
 seed-vouchers.sql
-PUBLISH_UI.md
-scripts/
+scripts/*
+!scripts/publish-ui.ps1
 .cursor/
 Client_Feedback/

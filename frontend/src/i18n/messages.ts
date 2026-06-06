@@ -117,7 +117,42 @@ export const messages = {
           body: 'Use the report to prioritise the areas that matter before university-level English study.',
         },
       ],
+      testimonialsTitle: 'Voices of Excellence',
+      testimonials: [
+        {
+          quote:
+            'The depth of the diagnostic feedback is unparalleled. It provides students with a clear roadmap for university-level language mastery.',
+          author: 'Senior Academic Practitioner',
+        },
+        {
+          quote:
+            'A vital tool for ensuring international students are truly prepared for the rigors of high-level academic research and discourse.',
+          author: 'Educational Programme Director',
+        },
+      ],
+      supportingOrgLabel: 'Supporting Organisation:',
+      supportingOrgName: 'School of Open Learning, Hong Kong Metropolitan University',
+      footerTagline: 'Advancing academic English diagnostics for the global elite.',
+      footerColumns: [
+        {
+          heading: 'About Us',
+          links: ['Our Vision', 'The Methodology', 'Partnerships'],
+        },
+        {
+          heading: 'Support',
+          links: ['Candidate FAQ', 'Institutional Access', 'Technical Help'],
+        },
+        {
+          heading: 'Contacts',
+          links: ['General Inquiries', 'Global Offices', 'Media Kit'],
+        },
+        {
+          heading: 'EDT Social',
+          links: ['LinkedIn', 'Twitter', 'YouTube'],
+        },
+      ],
       footer: 'English Diagnostic Test. Academic readiness insights for learners and schools.',
+      footerCopyright: '© 2026 EDT GLOBAL. ALL RIGHTS RESERVED.',
     },
     voucher: {
       title: 'Enter your E-voucher',
@@ -369,7 +404,40 @@ export const messages = {
           body: '按報告優先處理最需要提升的範疇，為大學英語學習作準備。',
         },
       ],
+      testimonialsTitle: '卓越之聲',
+      testimonials: [
+        {
+          quote: '診斷回饋的深度無可比擬，為學生提供通往大學級語言掌握的清晰路線圖。',
+          author: '資深學術從業者',
+        },
+        {
+          quote: '確保國際學生真正準備好應對高難度學術研究與專業論述的重要工具。',
+          author: '教育課程總監',
+        },
+      ],
+      supportingOrgLabel: '支持機構：',
+      supportingOrgName: '香港都會大學 公開進修學院',
+      footerTagline: '為全球精英推進學術英語診斷。',
+      footerColumns: [
+        {
+          heading: '關於我們',
+          links: ['我們的願景', '診斷方法', '合作夥伴'],
+        },
+        {
+          heading: '支援',
+          links: ['考生常見問題', '機構使用', '技術協助'],
+        },
+        {
+          heading: '聯絡',
+          links: ['一般查詢', '全球辦事處', '媒體資料'],
+        },
+        {
+          heading: 'EDT 社交',
+          links: ['LinkedIn', 'Twitter', 'YouTube'],
+        },
+      ],
       footer: 'English Diagnostic Test。為學生及學校提供學術英語準備度分析。',
+      footerCopyright: '© 2026 EDT GLOBAL 版權所有。',
     },
     voucher: {
       title: '輸入 E-voucher',
