@@ -228,13 +228,18 @@ export async function adminCreateTeacherCredential(request: Request, env: AdminE
 
   const now = Date.now();
   try {
+    const existingGroup = await env.DB.prepare('SELECT key FROM teacher_credentials WHERE user_group = ?').bind(userGroup).first<{ key: string }>();
+    if (existingGroup) {
+      return json({ error: `User group '${userGroup}' is already linked to teacher key '${existingGroup.key}'. Please modify the existing key in the table below.` }, { status: 409 }, origin);
+    }
+
     await env.DB.prepare(
       'INSERT INTO teacher_credentials (key, user_group, remark, created_at) VALUES (?, ?, ?, ?)',
     )
       .bind(key, userGroup, body.remark ?? null, now)
       .run();
   } catch {
-    return json({ error: 'Teacher key or user group already exists' }, { status: 409 }, origin);
+    return json({ error: 'Teacher key already exists' }, { status: 409 }, origin);
   }
 
   const row = await env.DB.prepare(
@@ -283,10 +288,18 @@ export async function adminUpdateTeacherCredential(request: Request, env: AdminE
 export async function adminDeleteTeacherCredential(_request: Request, env: AdminEnv, keyParam: string, origin: string | undefined, json: JsonResponder) {
   const key = keyParam.trim();
 
-  const existing = await env.DB.prepare('SELECT key FROM teacher_credentials WHERE key = ?').bind(key).first();
+  const existing = await env.DB.prepare(
+    'SELECT key, user_group FROM teacher_credentials WHERE key = ?',
+  ).bind(key).first<{ key: string; user_group: string }>();
+
   if (!existing) {
     return json({ error: 'Teacher credential not found' }, { status: 404 }, origin);
   }
+
+  // Reassign all vouchers under this group back to the default before removing the credential.
+  await env.DB.prepare(
+    'UPDATE vouchers SET user_group = ? WHERE user_group = ?',
+  ).bind(DEFAULT_USER_GROUP, existing.user_group).run();
 
   await env.DB.prepare('DELETE FROM teacher_credentials WHERE key = ?').bind(key).run();
 
@@ -294,11 +307,21 @@ export async function adminDeleteTeacherCredential(_request: Request, env: Admin
 }
 
 export async function adminListUserGroups(_request: Request, env: AdminEnv, origin: string | undefined, json: JsonResponder) {
+  // Union user groups from both teacher_credentials (defined groups) and vouchers
+  // (groups already in use), so the dropdown is always complete.
   const result = await env.DB.prepare(
-    'SELECT user_group FROM teacher_credentials ORDER BY user_group ASC',
+    `SELECT DISTINCT user_group FROM (
+       SELECT user_group FROM teacher_credentials
+       UNION
+       SELECT user_group FROM vouchers WHERE user_group IS NOT NULL AND user_group != ''
+     ) ORDER BY user_group ASC`,
   ).all<{ user_group: string }>();
+
   const groups = (result.results ?? []).map((r) => r.user_group);
-  return json({ userGroups: [DEFAULT_USER_GROUP, ...groups] }, undefined, origin);
+  // DEFAULT_USER_GROUP always appears first
+  const withDefault = [DEFAULT_USER_GROUP, ...groups.filter((g) => g !== DEFAULT_USER_GROUP)];
+
+  return json({ userGroups: withDefault }, undefined, origin);
 }
 
 export async function handleAdminRequest(

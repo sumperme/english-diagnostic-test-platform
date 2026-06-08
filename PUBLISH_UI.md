@@ -89,7 +89,7 @@ env.ASSETS    Assets
 |-----------|-----|
 | TypeScript / Vite build failed | Fix code; script catches this locally first |
 | `Invalid uuid` on D1 | Do not change `database_id` in wrangler unless recreating D1 |
-| Workspace autoconfig error | Deploy command must be `npx wrangler deploy -c wrangler.toml` |
+| `run in the root of a workspace instead of targeting a specific project` | In Cloudflare → Workers Builds → **Deploy command** must be `npm run deploy` (not `npx wrangler deploy`). Then **Retry deployment**. |
 
 ### 5. If the site looks unchanged
 

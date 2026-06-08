@@ -306,10 +306,9 @@ export function AdminScreen() {
       setNewTeacherGroup('');
       setNewTeacherRemark('');
       setMessage('Teacher credential added.');
-      await loadTeacherData();
-      await loadUserGroups();
-    } catch {
-      setMessage('Failed to add credential. Key or user group may already exist.');
+      await Promise.all([loadTeacherData(), loadUserGroups(), loadVoucherData()]);
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to add credential. Key or user group may already exist.');
     } finally {
       setLoading(false);
     }
@@ -338,8 +337,8 @@ export function AdminScreen() {
       await deleteAdminTeacherCredential(key);
       setDeleteConfirmKey(null);
       setMessage(`Deleted credential ${key}.`);
-      await loadTeacherData();
-      await loadUserGroups();
+      // Reload everything: the worker has already reassigned affected vouchers to General Learner.
+      await Promise.all([loadTeacherData(), loadUserGroups(), loadVoucherData()]);
     } catch {
       setMessage(`Failed to delete credential ${key}.`);
     } finally {
@@ -547,9 +546,9 @@ export function AdminScreen() {
                           <td className="px-3 py-3">
                             <select
                               value={draft.userGroup}
-                              onChange={(e) =>
-                                setDrafts((prev) => ({ ...prev, [voucher.code]: { ...draft, userGroup: e.target.value } }))
-                              }
+                              onChange={(e) => {
+                                setDrafts((prev) => ({ ...prev, [voucher.code]: { ...draft, userGroup: e.target.value } }));
+                              }}
                               className="w-full min-w-[140px] rounded border border-slate-200 px-2 py-1 text-xs"
                             >
                               {userGroups.map((g) => (

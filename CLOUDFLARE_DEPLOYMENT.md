@@ -130,6 +130,7 @@ Worker serves non-`/api/` paths via `env.ASSETS.fetch()`.
 | Invalid voucher | Re-seed D1 or check code not already used |
 | Push failed | GitHub login — see [PUBLISH_UI.md](PUBLISH_UI.md) |
 | Build failed on Cloudflare | Fix locally; `npm run build`; publish again |
+| `Wrangler application detection logic has been run in the root of a workspace` | **Deploy command** must be `npm run deploy` (not bare `npx wrangler deploy`). Retry deployment after fixing. |
 
 ### Emergency local deploy (skip CI)
 
