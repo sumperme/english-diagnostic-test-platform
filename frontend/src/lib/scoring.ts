@@ -1,6 +1,6 @@
 import { CEFR_BANDS } from '../data/cefr';
 import { DIMENSIONS, OVERALL_ONLY_QIDS } from '../data/dimensions';
-import { ALL_QUESTIONS, ANSWER_KEY, PART_A, PART_B } from '../data/questions';
+import { ALL_QUESTIONS, ANSWER_KEY, PART_A, PART_B, type Question } from '../data/questions';
 import type { Answers, CandidateInfo, DimensionScore, ReportResult } from '../types';
 import { percent } from './format';
 
@@ -34,6 +34,17 @@ export const levelBadgeClass = (level: number) => {
   return 'bg-rose-100 text-rose-700';
 };
 
+function buildQuestionCorrectness(
+  answers: Answers,
+  questions: Question[],
+): Record<string, 0 | 1> {
+  const result: Record<string, 0 | 1> = {};
+  for (const q of questions) {
+    result[q.id] = answers[q.id] === ANSWER_KEY[q.id] ? 1 : 0;
+  }
+  return result;
+}
+
 export function computeReport(
   answers: Answers,
   candidateInfo: CandidateInfo,
@@ -61,6 +72,8 @@ export function computeReport(
     .filter((dimension) => dimension.level <= 2)
     .map((dimension) => dimension.name);
 
+  const questionCorrectness = buildQuestionCorrectness(answers, questions);
+
   return {
     reportVersion: APP_VERSION,
     candidateInfo,
@@ -82,6 +95,7 @@ export function computeReport(
       weakDimensions,
       recommendation: cefrBand.recommendation,
       overallOnlyQids: OVERALL_ONLY_QIDS,
+      questionCorrectness,
     },
   };
 }

@@ -8,5 +8,7 @@ Evouchers.txt
 seed-vouchers.sql
 scripts/*
 !scripts/publish-ui.ps1
+!scripts/local-preview.ps1
 .cursor/
 Client_Feedback/
+index.html

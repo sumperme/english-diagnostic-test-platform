@@ -15,6 +15,15 @@ type VoucherRow = {
   sold_to: string | null;
 };
 
+type TeacherCredentialRow = {
+  key: string;
+  user_group: string;
+  remark: string | null;
+  created_at: number;
+  voucher_count: number;
+  used_voucher_count: number;
+};
+
 const DEFAULT_USER_GROUP = 'General Learner';
 
 export function isAdminAuthorized(request: Request, env: AdminEnv) {
@@ -40,6 +49,17 @@ function mapVoucher(row: VoucherRow) {
     educationLevel: row.education_level,
     remark: row.remark,
     soldTo: row.sold_to,
+  };
+}
+
+function mapTeacherCredential(row: TeacherCredentialRow) {
+  return {
+    key: row.key,
+    userGroup: row.user_group,
+    remark: row.remark,
+    createdAt: row.created_at,
+    voucherCount: Number(row.voucher_count ?? 0),
+    usedVoucherCount: Number(row.used_voucher_count ?? 0),
   };
 }
 
@@ -169,6 +189,118 @@ export async function adminUpdateVoucher(request: Request, env: AdminEnv, codePa
   return json({ voucher: row ? mapVoucher(row) : null }, undefined, origin);
 }
 
+// --- Teacher Credential handlers ---
+
+export async function adminListTeacherCredentials(_request: Request, env: AdminEnv, origin: string | undefined, json: JsonResponder) {
+  const result = await env.DB.prepare(
+    `SELECT
+       tc.key,
+       tc.user_group,
+       tc.remark,
+       tc.created_at,
+       COUNT(v.code) AS voucher_count,
+       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+     FROM teacher_credentials tc
+     LEFT JOIN vouchers v ON v.user_group = tc.user_group
+     GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at
+     ORDER BY tc.user_group ASC`,
+  ).all<TeacherCredentialRow>();
+
+  return json({ credentials: (result.results ?? []).map(mapTeacherCredential) }, undefined, origin);
+}
+
+export async function adminCreateTeacherCredential(request: Request, env: AdminEnv, origin: string | undefined, json: JsonResponder) {
+  const body = (await request.json()) as {
+    key?: string;
+    userGroup?: string;
+    remark?: string | null;
+  };
+
+  const key = (body.key ?? '').trim();
+  if (!key) {
+    return json({ error: 'Teacher key is required' }, { status: 400 }, origin);
+  }
+
+  const userGroup = (body.userGroup ?? '').trim().slice(0, 30);
+  if (!userGroup) {
+    return json({ error: 'User group is required' }, { status: 400 }, origin);
+  }
+
+  const now = Date.now();
+  try {
+    await env.DB.prepare(
+      'INSERT INTO teacher_credentials (key, user_group, remark, created_at) VALUES (?, ?, ?, ?)',
+    )
+      .bind(key, userGroup, body.remark ?? null, now)
+      .run();
+  } catch {
+    return json({ error: 'Teacher key or user group already exists' }, { status: 409 }, origin);
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
+       COUNT(v.code) AS voucher_count,
+       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+     FROM teacher_credentials tc
+     LEFT JOIN vouchers v ON v.user_group = tc.user_group
+     WHERE tc.key = ?
+     GROUP BY tc.key`,
+  )
+    .bind(key)
+    .first<TeacherCredentialRow>();
+
+  return json({ credential: row ? mapTeacherCredential(row) : null }, { status: 201 }, origin);
+}
+
+export async function adminUpdateTeacherCredential(request: Request, env: AdminEnv, keyParam: string, origin: string | undefined, json: JsonResponder) {
+  const key = keyParam.trim();
+  const body = (await request.json()) as { remark?: string | null };
+
+  const existing = await env.DB.prepare('SELECT key FROM teacher_credentials WHERE key = ?').bind(key).first();
+  if (!existing) {
+    return json({ error: 'Teacher credential not found' }, { status: 404 }, origin);
+  }
+
+  await env.DB.prepare('UPDATE teacher_credentials SET remark = ? WHERE key = ?')
+    .bind(body.remark ?? null, key)
+    .run();
+
+  const row = await env.DB.prepare(
+    `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
+       COUNT(v.code) AS voucher_count,
+       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+     FROM teacher_credentials tc
+     LEFT JOIN vouchers v ON v.user_group = tc.user_group
+     WHERE tc.key = ?
+     GROUP BY tc.key`,
+  )
+    .bind(key)
+    .first<TeacherCredentialRow>();
+
+  return json({ credential: row ? mapTeacherCredential(row) : null }, undefined, origin);
+}
+
+export async function adminDeleteTeacherCredential(_request: Request, env: AdminEnv, keyParam: string, origin: string | undefined, json: JsonResponder) {
+  const key = keyParam.trim();
+
+  const existing = await env.DB.prepare('SELECT key FROM teacher_credentials WHERE key = ?').bind(key).first();
+  if (!existing) {
+    return json({ error: 'Teacher credential not found' }, { status: 404 }, origin);
+  }
+
+  await env.DB.prepare('DELETE FROM teacher_credentials WHERE key = ?').bind(key).run();
+
+  return json({ ok: true }, undefined, origin);
+}
+
+export async function adminListUserGroups(_request: Request, env: AdminEnv, origin: string | undefined, json: JsonResponder) {
+  const result = await env.DB.prepare(
+    'SELECT user_group FROM teacher_credentials ORDER BY user_group ASC',
+  ).all<{ user_group: string }>();
+  const groups = (result.results ?? []).map((r) => r.user_group);
+  return json({ userGroups: [DEFAULT_USER_GROUP, ...groups] }, undefined, origin);
+}
+
 export async function handleAdminRequest(
   request: Request,
   env: AdminEnv,
@@ -196,9 +328,34 @@ export async function handleAdminRequest(
     return adminCreateVoucher(request, env, origin, json);
   }
 
-  const patchMatch = url.pathname.match(/^\/api\/admin\/vouchers\/([^/]+)$/);
-  if (patchMatch && request.method === 'PATCH') {
-    return adminUpdateVoucher(request, env, decodeURIComponent(patchMatch[1]), origin, json);
+  const patchVoucherMatch = url.pathname.match(/^\/api\/admin\/vouchers\/([^/]+)$/);
+  if (patchVoucherMatch && request.method === 'PATCH') {
+    return adminUpdateVoucher(request, env, decodeURIComponent(patchVoucherMatch[1]), origin, json);
+  }
+
+  // Teacher credential routes
+  if (url.pathname === '/api/admin/teacher-credentials' && request.method === 'GET') {
+    return adminListTeacherCredentials(request, env, origin, json);
+  }
+
+  if (url.pathname === '/api/admin/teacher-credentials' && request.method === 'POST') {
+    return adminCreateTeacherCredential(request, env, origin, json);
+  }
+
+  const teacherKeyMatch = url.pathname.match(/^\/api\/admin\/teacher-credentials\/([^/]+)$/);
+  if (teacherKeyMatch) {
+    const keyParam = decodeURIComponent(teacherKeyMatch[1]);
+    if (request.method === 'PATCH') {
+      return adminUpdateTeacherCredential(request, env, keyParam, origin, json);
+    }
+    if (request.method === 'DELETE') {
+      return adminDeleteTeacherCredential(request, env, keyParam, origin, json);
+    }
+  }
+
+  // User groups list for admin UI dropdowns
+  if (url.pathname === '/api/admin/user-groups' && request.method === 'GET') {
+    return adminListUserGroups(request, env, origin, json);
   }
 
   return json({ error: 'Not found' }, { status: 404 }, origin);

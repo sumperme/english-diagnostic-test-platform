@@ -7,11 +7,13 @@ export function MarketingScreen({
   onNavigate,
   onLogin,
   onLogoClick,
+  onTeacherLogin,
 }: {
   page: MarketingPage;
   onNavigate: (page: MarketingPage) => void;
   onLogin: () => void;
   onLogoClick: () => void;
+  onTeacherLogin?: (key: string) => Promise<void>;
 }) {
   const { t } = useLocale();
 
@@ -22,6 +24,7 @@ export function MarketingScreen({
       onNavigate={onNavigate}
       onLogin={onLogin}
       onLogoClick={onLogoClick}
+      onTeacherLogin={onTeacherLogin}
     />
   );
 }

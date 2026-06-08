@@ -66,6 +66,7 @@ export type ReportResult = {
     weakDimensions: string[];
     recommendation: string;
     overallOnlyQids: string[];
+    questionCorrectness: Record<string, 0 | 1>;
   };
   backendData?: BackendData;
   backendError?: boolean;
@@ -92,4 +93,66 @@ export type AdminVoucherList = {
   vouchers: AdminVoucher[];
   limit: number;
   offset: number;
+};
+
+export type TeacherSession = {
+  teacherKey: string;
+  userGroup: string;
+};
+
+export type TeacherSubmissionRow = {
+  submissionId: string;
+  submittedAt: number;
+  candidateName: string;
+  candidateId: string;
+  testDate: number;
+  totalScore: number;
+  cefr: string;
+  cefrLabel: string;
+  weakDimensions: string[];
+  recommendation: string;
+};
+
+export type TeacherDimensionStat = {
+  id: number;
+  key: string;
+  name: string;
+  short: string;
+  mean: number | null;
+  stdDev: number | null;
+};
+
+export type TeacherQuestionStat = {
+  qid: string;
+  part: 'A' | 'B';
+  canonicalNumber: number;
+  correctRate: number | null;
+  totalResponses: number;
+};
+
+export type TeacherDashboardData = {
+  userGroup: string;
+  totalVouchers: number;
+  usedVouchers: number;
+  totalSubmissions: number;
+  overallMean: number | null;
+  overallMedian: number | null;
+  overallStdDev: number | null;
+  scoreBuckets: { label: string; min: number; max: number; count: number }[];
+  dimensionStats: TeacherDimensionStat[];
+  submissions: TeacherSubmissionRow[];
+  questionStats: TeacherQuestionStat[];
+};
+
+export type AdminTeacherCredential = {
+  key: string;
+  userGroup: string;
+  remark: string | null;
+  createdAt: number;
+  voucherCount: number;
+  usedVoucherCount: number;
+};
+
+export type AdminTeacherCredentialList = {
+  credentials: AdminTeacherCredential[];
 };
