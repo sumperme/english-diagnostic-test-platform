@@ -1,7 +1,20 @@
 import { CEFR_BANDS } from '../data/cefr';
 import { DIMENSIONS, OVERALL_ONLY_QIDS } from '../data/dimensions';
-import { ALL_QUESTIONS, ANSWER_KEY, PART_A, PART_B, type Question } from '../data/questions';
+import { ALL_QUESTIONS, ANSWER_KEY, PART_A, PART_B, type OptionKey, type Question } from '../data/questions';
 import type { Answers, CandidateInfo, DimensionScore, ReportResult } from '../types';
+
+const VALID_OPTION_KEYS = new Set<OptionKey>(['A', 'B', 'C', 'D']);
+
+/** Keep only ASCII option keys so locale/UI strings never enter the submission payload. */
+export function sanitizeAnswers(answers: Answers): Answers {
+  const sanitized: Answers = {};
+  for (const [questionId, value] of Object.entries(answers)) {
+    if (value && VALID_OPTION_KEYS.has(value)) {
+      sanitized[questionId] = value;
+    }
+  }
+  return sanitized;
+}
 import { percent } from './format';
 
 export const APP_VERSION = '2.0.0';
@@ -52,14 +65,15 @@ export function computeReport(
   autoSubmitted: boolean,
   questions = ALL_QUESTIONS,
 ): ReportResult {
+  const safeAnswers = sanitizeAnswers(answers);
   const now = Date.now();
   const durationSec = Math.round((now - startedAt) / 1000);
-  const partACorrect = PART_A.filter((q) => answers[q.id] === ANSWER_KEY[q.id]).length;
-  const partBCorrect = PART_B.filter((q) => answers[q.id] === ANSWER_KEY[q.id]).length;
+  const partACorrect = PART_A.filter((q) => safeAnswers[q.id] === ANSWER_KEY[q.id]).length;
+  const partBCorrect = PART_B.filter((q) => safeAnswers[q.id] === ANSWER_KEY[q.id]).length;
   const total = partACorrect + partBCorrect;
 
   const dimensions = DIMENSIONS.map((dimension) => {
-    const score = dimension.qids.filter((qid) => answers[qid] === ANSWER_KEY[qid]).length;
+    const score = dimension.qids.filter((qid) => safeAnswers[qid] === ANSWER_KEY[qid]).length;
     return {
       ...dimension,
       score,
@@ -72,7 +86,7 @@ export function computeReport(
     .filter((dimension) => dimension.level <= 2)
     .map((dimension) => dimension.name);
 
-  const questionCorrectness = buildQuestionCorrectness(answers, questions);
+  const questionCorrectness = buildQuestionCorrectness(safeAnswers, questions);
 
   return {
     reportVersion: APP_VERSION,
@@ -81,7 +95,7 @@ export function computeReport(
     startedAt,
     durationSec,
     autoSubmitted,
-    answers,
+    answers: safeAnswers,
     questions,
     scores: {
       partA: { correct: partACorrect, total: 36, pct: percent(partACorrect, 36) },

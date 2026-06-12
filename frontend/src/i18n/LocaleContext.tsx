@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { Language } from '../types';
 import { getMessages } from './messages';
 
@@ -19,6 +19,10 @@ const getInitialLanguage = (): Language => {
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+
+  useEffect(() => {
+    document.documentElement.lang = language === 'zh-HK' ? 'zh-Hant' : 'en';
+  }, [language]);
 
   const setLanguage = (next: Language) => {
     localStorage.setItem(STORAGE_KEY, next);
