@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { AdminLoginForm } from '../components/admin/AdminLoginForm';
 import {
   clearAdminPassword,
   createAdminTeacherCredential,
@@ -88,41 +89,6 @@ function isDraftChanged(draft: VoucherDraft, voucher: AdminVoucher): boolean {
 
 function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential): boolean {
   return draft.remark !== (cred.remark ?? '');
-}
-
-// ─── Login screen ─────────────────────────────────────────────────────────────
-
-function LoginForm({ onLogin }: { onLogin: (pw: string) => void }) {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!password.trim()) { setError('Password required.'); return; }
-    setError('');
-    onLogin(password);
-  };
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-edt-forest px-4 text-edt-soft">
-      <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-[rgba(170,169,90,0.25)] bg-[rgba(27,45,42,0.95)] p-8 shadow-lg">
-        <h1 className="mb-2 font-display text-2xl font-bold text-edt-neon">EDT Admin</h1>
-        <p className="mb-6 text-sm text-edt-soft/75">Enter the admin password to manage e-vouchers.</p>
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-edt-olive">Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-xl border border-edt-olive/40 bg-edt-forest px-4 py-3 text-edt-soft outline-none focus:border-edt-neon"
-          autoFocus
-        />
-        {error ? <p className="mb-3 text-sm text-rose-400">{error}</p> : null}
-        <button type="submit" className="w-full rounded-xl bg-edt-gold py-3 text-sm font-bold uppercase tracking-[0.1em] text-edt-forest transition-colors hover:bg-edt-neon">
-          Sign in
-        </button>
-      </form>
-    </div>
-  );
 }
 
 // ─── Main AdminScreen ─────────────────────────────────────────────────────────
@@ -359,7 +325,7 @@ export function AdminScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (!authenticated) {
-    return <LoginForm onLogin={handleLogin} />;
+    return <AdminLoginForm onLogin={handleLogin} />;
   }
 
   return (
