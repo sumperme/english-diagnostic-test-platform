@@ -13,6 +13,8 @@ type VoucherRow = {
   education_level: string | null;
   remark: string | null;
   sold_to: string | null;
+  uses_allowed: number;
+  use_count: number;
 };
 
 type TeacherCredentialRow = {
@@ -41,10 +43,14 @@ function normalizeCode(code: string) {
 }
 
 function mapVoucher(row: VoucherRow) {
+  const usesAllowed = Number(row.uses_allowed ?? 1);
+  const useCount = Number(row.use_count ?? 0);
   return {
     code: row.code,
-    used: row.used_at != null,
+    used: useCount >= usesAllowed,
     usedAt: row.used_at,
+    usesAllowed,
+    useCount,
     userGroup: row.user_group || DEFAULT_USER_GROUP,
     educationLevel: row.education_level,
     remark: row.remark,
@@ -67,8 +73,8 @@ export async function adminSummary(_request: Request, env: AdminEnv, origin: str
   const row = await env.DB.prepare(
     `SELECT
       COUNT(*) AS total,
-      SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) AS used,
-      SUM(CASE WHEN used_at IS NULL THEN 1 ELSE 0 END) AS available,
+      SUM(CASE WHEN use_count >= uses_allowed THEN 1 ELSE 0 END) AS used,
+      SUM(CASE WHEN use_count < uses_allowed THEN 1 ELSE 0 END) AS available,
       SUM(CASE WHEN sold_to IS NOT NULL AND sold_to != '' THEN 1 ELSE 0 END) AS assigned
     FROM vouchers`,
   ).first<{ total: number; used: number; available: number; assigned: number }>();
@@ -92,7 +98,7 @@ export async function adminListVouchers(request: Request, env: AdminEnv, origin:
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 500);
   const offset = Math.max(Number(url.searchParams.get('offset') ?? 0), 0);
 
-  let sql = 'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to FROM vouchers WHERE 1=1';
+  let sql = 'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE 1=1';
   const binds: Array<string | number> = [];
 
   if (q) {
@@ -100,9 +106,9 @@ export async function adminListVouchers(request: Request, env: AdminEnv, origin:
     binds.push(`%${q}%`);
   }
   if (status === 'used') {
-    sql += ' AND used_at IS NOT NULL';
+    sql += ' AND use_count >= uses_allowed';
   } else if (status === 'available') {
-    sql += ' AND used_at IS NULL';
+    sql += ' AND use_count < uses_allowed';
   }
 
   sql += ' ORDER BY code ASC LIMIT ? OFFSET ?';
@@ -150,7 +156,7 @@ export async function adminCreateVoucher(request: Request, env: AdminEnv, origin
   }
 
   const row = await env.DB.prepare(
-    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to FROM vouchers WHERE code = ?',
+    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE code = ?',
   )
     .bind(code)
     .first<VoucherRow>();
@@ -165,23 +171,49 @@ export async function adminUpdateVoucher(request: Request, env: AdminEnv, codePa
     educationLevel?: string | null;
     remark?: string | null;
     soldTo?: string | null;
+    usesAllowed?: number;
   };
 
-  const existing = await env.DB.prepare('SELECT code FROM vouchers WHERE code = ?').bind(code).first();
+  const existing = await env.DB.prepare(
+    'SELECT code, use_count FROM vouchers WHERE code = ?',
+  ).bind(code).first<{ code: string; use_count: number }>();
   if (!existing) {
     return json({ error: 'Voucher not found' }, { status: 404 }, origin);
   }
 
   const userGroup = (body.userGroup ?? DEFAULT_USER_GROUP).trim() || DEFAULT_USER_GROUP;
 
-  await env.DB.prepare(
-    'UPDATE vouchers SET user_group = ?, education_level = ?, remark = ?, sold_to = ? WHERE code = ?',
-  )
-    .bind(userGroup, body.educationLevel ?? null, body.remark ?? null, body.soldTo ?? null, code)
-    .run();
+  let usesAllowed: number | undefined;
+  if (body.usesAllowed != null) {
+    usesAllowed = Math.floor(Number(body.usesAllowed));
+    if (!Number.isFinite(usesAllowed) || usesAllowed < 1) {
+      return json({ error: 'Uses allowed must be an integer of at least 1' }, { status: 400 }, origin);
+    }
+    if (usesAllowed < Number(existing.use_count ?? 0)) {
+      return json(
+        { error: `Uses allowed cannot be less than current use count (${existing.use_count})` },
+        { status: 400 },
+        origin,
+      );
+    }
+  }
+
+  if (usesAllowed != null) {
+    await env.DB.prepare(
+      'UPDATE vouchers SET user_group = ?, education_level = ?, remark = ?, sold_to = ?, uses_allowed = ? WHERE code = ?',
+    )
+      .bind(userGroup, body.educationLevel ?? null, body.remark ?? null, body.soldTo ?? null, usesAllowed, code)
+      .run();
+  } else {
+    await env.DB.prepare(
+      'UPDATE vouchers SET user_group = ?, education_level = ?, remark = ?, sold_to = ? WHERE code = ?',
+    )
+      .bind(userGroup, body.educationLevel ?? null, body.remark ?? null, body.soldTo ?? null, code)
+      .run();
+  }
 
   const row = await env.DB.prepare(
-    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to FROM vouchers WHERE code = ?',
+    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE code = ?',
   )
     .bind(code)
     .first<VoucherRow>();
@@ -199,7 +231,7 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
        tc.remark,
        tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at
@@ -245,7 +277,7 @@ export async function adminCreateTeacherCredential(request: Request, env: AdminE
   const row = await env.DB.prepare(
     `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      WHERE tc.key = ?
@@ -273,7 +305,7 @@ export async function adminUpdateTeacherCredential(request: Request, env: AdminE
   const row = await env.DB.prepare(
     `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.used_at IS NOT NULL THEN 1 ELSE 0 END) AS used_voucher_count
+       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      WHERE tc.key = ?

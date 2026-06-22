@@ -54,6 +54,7 @@ type VoucherDraft = {
   educationLevel: string;
   remark: string;
   soldTo: string;
+  usesAllowed: number;
 };
 
 type TeacherDraft = {
@@ -70,6 +71,7 @@ function draftFromVoucher(voucher: AdminVoucher): VoucherDraft {
     educationLevel: voucher.educationLevel ?? '',
     remark: voucher.remark ?? '',
     soldTo: voucher.soldTo ?? '',
+    usesAllowed: voucher.usesAllowed ?? 1,
   };
 }
 
@@ -83,8 +85,26 @@ function isDraftChanged(draft: VoucherDraft, voucher: AdminVoucher): boolean {
     draft.userGroup !== original.userGroup ||
     draft.educationLevel !== original.educationLevel ||
     draft.remark !== original.remark ||
-    draft.soldTo !== original.soldTo
+    draft.soldTo !== original.soldTo ||
+    draft.usesAllowed !== original.usesAllowed
   );
+}
+
+function formatVoucherStatus(voucher: AdminVoucher): string {
+  const useCount = voucher.useCount ?? 0;
+  const usesAllowed = voucher.usesAllowed ?? 1;
+  if (useCount === 0) return 'Available';
+  if (usesAllowed === 1) return 'Used';
+  if (useCount >= usesAllowed) return `Used ${usesAllowed}/${usesAllowed}`;
+  return `Used ${useCount}/${usesAllowed}`;
+}
+
+function voucherStatusBadgeClass(voucher: AdminVoucher): string {
+  const useCount = voucher.useCount ?? 0;
+  const usesAllowed = voucher.usesAllowed ?? 1;
+  if (useCount === 0) return 'bg-emerald-100 text-emerald-700';
+  if (usesAllowed > 1 && useCount < usesAllowed) return 'bg-amber-100 text-amber-800';
+  return 'bg-rose-100 text-rose-700';
 }
 
 function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential): boolean {
@@ -219,6 +239,7 @@ export function AdminScreen() {
         educationLevel: draft.educationLevel || null,
         remark: draft.remark || null,
         soldTo: draft.soldTo || null,
+        usesAllowed: Math.max(1, Math.floor(draft.usesAllowed)),
       });
       setMessage(`Saved ${code}.`);
       await loadVoucherData();
@@ -475,6 +496,7 @@ export function AdminScreen() {
                     <tr>
                       <th className="px-3 py-2">Code</th>
                       <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Uses allowed</th>
                       <th className="px-3 py-2">
                         <button
                           type="button"
@@ -505,9 +527,22 @@ export function AdminScreen() {
                         <tr key={voucher.code} className="border-b border-slate-100 align-top">
                           <td className="px-3 py-3 font-mono text-xs">{voucher.code}</td>
                           <td className="px-3 py-3">
-                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${voucher.used ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                              {voucher.used ? 'Used' : 'Available'}
+                            <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${voucherStatusBadgeClass(voucher)}`}>
+                              {formatVoucherStatus(voucher)}
                             </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="number"
+                              min={Math.max(1, voucher.useCount ?? 0)}
+                              step={1}
+                              value={draft.usesAllowed}
+                              onChange={(e) => {
+                                const next = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                                setDrafts((prev) => ({ ...prev, [voucher.code]: { ...draft, usesAllowed: next } }));
+                              }}
+                              className="w-20 rounded border border-slate-200 px-2 py-1 text-xs"
+                            />
                           </td>
                           <td className="px-3 py-3">
                             <select

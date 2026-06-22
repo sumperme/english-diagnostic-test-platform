@@ -83,6 +83,8 @@ export type AdminVoucher = {
   code: string;
   used: boolean;
   usedAt: number | null;
+  usesAllowed: number;
+  useCount: number;
   userGroup: string;
   educationLevel: string | null;
   remark: string | null;

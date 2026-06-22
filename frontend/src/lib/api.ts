@@ -178,6 +178,7 @@ export async function updateAdminVoucher(
     educationLevel?: string | null;
     remark?: string | null;
     soldTo?: string | null;
+    usesAllowed?: number;
   },
 ): Promise<{ voucher: AdminVoucher | null }> {
   return adminFetch<{ voucher: AdminVoucher | null }>(`/api/admin/vouchers/${encodeURIComponent(code)}`, {

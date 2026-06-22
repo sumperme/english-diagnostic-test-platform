@@ -101,16 +101,25 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
   }
 
   const voucher = await env.DB.prepare(
-    'SELECT code, used_at, user_group FROM vouchers WHERE code = ?',
+    'SELECT code, used_at, user_group, uses_allowed, use_count FROM vouchers WHERE code = ?',
   )
     .bind(code)
-    .first<{ code: string; used_at: number | null; user_group: string | null }>();
+    .first<{
+      code: string;
+      used_at: number | null;
+      user_group: string | null;
+      uses_allowed: number;
+      use_count: number;
+    }>();
 
   if (!voucher) {
     return json({ error: 'NOT_FOUND' }, { status: 401 }, origin);
   }
 
-  if (voucher.used_at != null) {
+  const usesAllowed = Number(voucher.uses_allowed ?? 1);
+  const useCount = Number(voucher.use_count ?? 0);
+
+  if (useCount >= usesAllowed) {
     return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
   }
 
@@ -119,14 +128,22 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
   const ttl = Number(env.SESSION_TTL_SECONDS ?? 7200) * 1000;
   const expiresAt = now + ttl;
 
-  const update = await env.DB.prepare(
-    'UPDATE vouchers SET used_at = ?, used_by_session = ? WHERE code = ? AND used_at IS NULL',
-  )
-    .bind(now, sessionToken, code)
-    .run();
+  if (usesAllowed === 1) {
+    const update = await env.DB.prepare(
+      'UPDATE vouchers SET used_at = ?, used_by_session = ?, use_count = 1 WHERE code = ? AND use_count = 0',
+    )
+      .bind(now, sessionToken, code)
+      .run();
 
-  if (!update.success || update.meta.changes !== 1) {
-    return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
+    if (!update.success || update.meta.changes !== 1) {
+      return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
+    }
+  } else {
+    await env.DB.prepare(
+      'UPDATE vouchers SET used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ?',
+    )
+      .bind(now, sessionToken, code)
+      .run();
   }
 
   await env.DB.prepare('INSERT INTO sessions (token, voucher_code, created_at, expires_at) VALUES (?, ?, ?, ?)')
@@ -145,10 +162,17 @@ async function getSession(request: Request, env: Env) {
 
   const token = match[1];
   const row = await env.DB.prepare(
-    'SELECT s.token, s.expires_at, s.voucher_code, v.user_group FROM sessions s LEFT JOIN vouchers v ON v.code = s.voucher_code WHERE s.token = ?',
+    'SELECT s.token, s.expires_at, s.voucher_code, v.user_group, v.uses_allowed, v.use_count FROM sessions s LEFT JOIN vouchers v ON v.code = s.voucher_code WHERE s.token = ?',
   )
     .bind(token)
-    .first<{ token: string; expires_at: number; voucher_code: string; user_group: string | null }>();
+    .first<{
+      token: string;
+      expires_at: number;
+      voucher_code: string;
+      user_group: string | null;
+      uses_allowed: number | null;
+      use_count: number | null;
+    }>();
 
   if (!row || row.expires_at <= Date.now()) return null;
   return row;
@@ -187,11 +211,29 @@ async function submit(request: Request, env: Env, origin?: string) {
     scoreDistJson = JSON.stringify(qc);
   }
 
-  await env.DB.prepare(
-    'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-    .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson)
-    .run();
+  const usesAllowed = Number(session.uses_allowed ?? 1);
+
+  if (usesAllowed > 1) {
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson),
+      env.DB.prepare(
+        'UPDATE vouchers SET use_count = use_count + 1, used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ? AND use_count < uses_allowed',
+      ).bind(now, session.token, session.voucher_code),
+    ]);
+
+    const updateResult = results[1];
+    if (!updateResult.success || updateResult.meta.changes !== 1) {
+      return json({ error: 'Voucher submission limit reached' }, { status: 409 }, origin);
+    }
+  } else {
+    await env.DB.prepare(
+      'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson)
+      .run();
+  }
 
   const allStats = await env.DB.prepare(
     'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score <= ? THEN 1 ELSE 0 END) as atOrBelow FROM submissions',
@@ -277,7 +319,7 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
 
   // Voucher counts
   const voucherStats = await env.DB.prepare(
-    `SELECT COUNT(*) as total, SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) as used
+    `SELECT COUNT(*) as total, SUM(CASE WHEN use_count > 0 THEN 1 ELSE 0 END) as used
      FROM vouchers WHERE user_group = ?`,
   )
     .bind(userGroup)
