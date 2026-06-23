@@ -156,7 +156,8 @@ export type AdminTeacherCredential = {
   remark: string | null;
   createdAt: number;
   voucherCount: number;
-  usedVoucherCount: number;
+  totalUseCount: number;
+  totalUsesAllowed: number;
 };
 
 export type AdminTeacherCredentialList = {

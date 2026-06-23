@@ -162,21 +162,16 @@ npx wrangler d1 execute edt-diagnostic --local --command "INSERT INTO vouchers (
 
 ---
 
-## v3 test bank migration — reset submission data
+## v3 test bank migration — reset submission data (one-time)
 
-Paper I was expanded from 72 to **90 questions** in report version **3.0.0**. Old submissions use incompatible dimension keys and score ranges. After deploying v3, clear historical submissions so teacher percentiles and score buckets are not mixed:
-
-```powershell
-npx wrangler d1 execute edt-diagnostic --remote --command "DELETE FROM submissions;"
-```
-
-Optionally clear stale sessions:
+Paper I was expanded from 72 to **90 questions** in report version **3.0.0**. Old submissions use incompatible dimension keys and score ranges. After deploying v3, clear historical submissions **once** so teacher percentiles and score buckets are not mixed:
 
 ```powershell
-npx wrangler d1 execute edt-diagnostic --remote --command "DELETE FROM sessions;"
+npx wrangler d1 execute edt-diagnostic --remote -c wrangler.toml --command "DELETE FROM submissions;"
+npx wrangler d1 execute edt-diagnostic --remote -c wrangler.toml --command "DELETE FROM sessions;"
 ```
 
-Vouchers and teacher credentials are unaffected.
+Vouchers and teacher credentials are unaffected. This was run on production when v3.0.0 was published; you do not need to run it again unless old submissions reappear.
 
 ---
 

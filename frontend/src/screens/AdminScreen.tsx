@@ -685,7 +685,7 @@ export function AdminScreen() {
                       <th className="px-3 py-2">Teacher's Voucher Key</th>
                       <th className="px-3 py-2">User Group</th>
                       <th className="px-3 py-2 text-right"># Vouchers</th>
-                      <th className="px-3 py-2 text-right"># Used</th>
+                      <th className="px-3 py-2 text-right">Used / Allowed</th>
                       <th className="px-3 py-2">Remark</th>
                       <th className="px-3 py-2" />
                     </tr>
@@ -711,7 +711,9 @@ export function AdminScreen() {
                             </span>
                           </td>
                           <td className="px-3 py-3 text-right text-xs font-semibold">{cred.voucherCount}</td>
-                          <td className="px-3 py-3 text-right text-xs font-semibold">{cred.usedVoucherCount}</td>
+                          <td className="px-3 py-3 text-right text-xs font-semibold">
+                            {cred.totalUseCount}/{cred.totalUsesAllowed}
+                          </td>
                           <td className="px-3 py-3">
                             <input
                               value={draft.remark}

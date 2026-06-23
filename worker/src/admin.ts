@@ -23,7 +23,8 @@ type TeacherCredentialRow = {
   remark: string | null;
   created_at: number;
   voucher_count: number;
-  used_voucher_count: number;
+  total_use_count: number;
+  total_uses_allowed: number;
 };
 
 const DEFAULT_USER_GROUP = 'General Learner';
@@ -112,7 +113,8 @@ function mapTeacherCredential(row: TeacherCredentialRow) {
     remark: row.remark,
     createdAt: row.created_at,
     voucherCount: Number(row.voucher_count ?? 0),
-    usedVoucherCount: Number(row.used_voucher_count ?? 0),
+    totalUseCount: Number(row.total_use_count ?? 0),
+    totalUsesAllowed: Number(row.total_uses_allowed ?? 0),
   };
 }
 
@@ -283,7 +285,8 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
        tc.remark,
        tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
+       COALESCE(SUM(v.use_count), 0) AS total_use_count,
+       COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at
@@ -329,7 +332,8 @@ export async function adminCreateTeacherCredential(request: Request, env: AdminE
   const row = await env.DB.prepare(
     `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
+       COALESCE(SUM(v.use_count), 0) AS total_use_count,
+       COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      WHERE tc.key = ?
@@ -357,7 +361,8 @@ export async function adminUpdateTeacherCredential(request: Request, env: AdminE
   const row = await env.DB.prepare(
     `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
        COUNT(v.code) AS voucher_count,
-       SUM(CASE WHEN v.use_count > 0 THEN 1 ELSE 0 END) AS used_voucher_count
+       COALESCE(SUM(v.use_count), 0) AS total_use_count,
+       COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      WHERE tc.key = ?
