@@ -153,7 +153,7 @@ export function TeacherDashboardScreen({
               <StatCard label="Total Vouchers" value={data.totalVouchers} />
               <StatCard label="Used Vouchers" value={data.usedVouchers} />
               <StatCard label="Submissions" value={data.totalSubmissions} />
-              <StatCard label="Overall Mean" value={fmt(data.overallMean)} sub="out of 72" />
+              <StatCard label="Overall Mean" value={fmt(data.overallMean)} sub="out of 90" />
               <StatCard label="Std Dev" value={fmt(data.overallStdDev)} />
             </div>
 
@@ -276,7 +276,7 @@ export function TeacherDashboardScreen({
                         <td className="px-3 py-3 text-xs whitespace-nowrap">{fmtDate(sub.testDate)}</td>
                         <td className="px-3 py-3 text-xs font-semibold">
                           {sub.totalScore}
-                          <span className="font-normal text-slate-400">/72</span>
+                          <span className="font-normal text-slate-400">/90</span>
                         </td>
                         <td className="px-3 py-3">
                           <span className="rounded-full bg-edt-indigo/10 px-2 py-0.5 text-xs font-semibold text-edt-indigo">
@@ -300,7 +300,7 @@ export function TeacherDashboardScreen({
             <section className="rounded-2xl border border-slate-200 bg-white p-6">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">
-                  Question Correctness Rate (72 Questions)
+                  Question Correctness Rate (90 Questions)
                 </h2>
                 <div className="flex gap-2">
                   <button

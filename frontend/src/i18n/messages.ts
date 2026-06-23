@@ -15,7 +15,7 @@ export const messages = {
       learners: {
         tag: 'For Learners',
         title: 'Know Your Readiness Before University.',
-        subtitle: 'EDT helps advanced learners benchmark C1 and C2 competence with a rigorous 72-question diagnostic and a detailed competency profile.',
+        subtitle: 'EDT helps advanced learners benchmark C1 and C2 competence with a rigorous 90-question diagnostic (60 grammar + 30 vocabulary) and a 12-dimension grammar profile.',
         cta: 'Start Diagnostic Test',
         sections: [
           {
@@ -24,7 +24,7 @@ export const messages = {
           },
           {
             heading: 'Actionable Report',
-            body: 'Your results map to 12 diagnostic dimensions and a CEFR-aligned band, highlighting priority areas for consolidation and revision.',
+            body: 'Your results map to 12 grammar dimensions (Part A) and a CEFR-aligned band, highlighting priority areas for consolidation and revision.',
           },
           {
             heading: 'Plan Your Next Step',
@@ -106,11 +106,11 @@ export const messages = {
       steps: [
         {
           title: 'Take the Diagnostic',
-          body: 'Complete a timed 72-question assessment that samples advanced grammar, vocabulary, and academic reading readiness.',
+          body: 'Complete a timed 90-question assessment (60 applied grammar + 30 vocabulary) aligned with CEFR C1 and C2 levels.',
         },
         {
           title: 'Receive a Profile',
-          body: 'Your results are mapped to 12 diagnostic dimensions and a CEFR-aligned overall readiness band.',
+          body: 'Your results are mapped to 12 grammar dimensions (Part A) and a CEFR-aligned overall readiness band.',
         },
         {
           title: 'Plan Progress',
@@ -164,7 +164,7 @@ export const messages = {
       invalid: 'Voucher could not be verified. Please check the code and try again.',
       alreadyUsed: 'This voucher has already been used.',
       notFound: 'Voucher code not found. Please check and try again.',
-      summary: ['72 questions', '60 minutes', '12 dimensions', 'CEFR C1/C2'],
+      summary: ['90 questions', '60 minutes', '12 grammar dimensions', 'CEFR C1/C2'],
       showCode: 'Show voucher code',
       hideCode: 'Hide voucher code',
       purchase: 'Purchase Voucher',
@@ -178,7 +178,7 @@ export const messages = {
         {
           name: 'Individual Diagnostic',
           price: 'HK$ 298',
-          features: ['1 single-use voucher', '72 questions, 60 minutes', 'Full CEFR-aligned report', '12-dimension competency profile'],
+          features: ['1 single-use voucher', '90 questions, 60 minutes', 'Full CEFR-aligned report', '12-dimension grammar profile (Part A)'],
           cta: 'Select Plan',
         },
         {
@@ -203,12 +203,12 @@ export const messages = {
     },
     info: {
       title: 'Before You Begin',
-      subtitle: 'Please provide your information. These details will appear on your diagnostic report.',
+      subtitle: 'Please provide your information. These details will appear on your diagnostic report. The test has 90 questions (60 grammar + 30 vocabulary) and a 60-minute time limit.',
       userGroup: 'Study group',
       name: 'Full Name',
       id: 'Student / Candidate ID',
       optional: 'optional',
-      warning: 'Once you click Start Test, the 60-minute timer will begin immediately and cannot be paused.',
+      warning: 'Once you click Start Test, the 60-minute timer will begin immediately and cannot be paused. You will answer 90 multiple-choice questions.',
       start: 'Start Test',
     },
     quiz: {
@@ -259,18 +259,30 @@ export const messages = {
       cohortRanking: 'Your Cohort Ranking',
       studyGroup: 'In your study group',
       allLearners: 'Among all learners',
+      cohortRank: 'Cohort rank',
+      cohortRankPending: 'Awaiting more submissions',
+      cohortRankOf: 'of',
       percentile: 'Percentile',
       cohortSize: 'Cohort size',
       userGroup: 'Study group',
       yourScore: 'Your score',
       cohortAverage: 'Cohort average',
       basedOn: 'Based on submissions to date.',
-      dimensionsTitle: '12-Dimension Competency Profile (by 60 questions)',
+      partBVocabI: 'Part B I',
+      partBVocabII: 'Part B II',
+      vocabCollocations: 'Collocations & Idioms',
+      vocabSpecialized: 'Nuanced & Specialized',
+      approxIelts: 'Approx. IELTS',
+      approxToefl: 'Approx. TOEFL iBT',
+      proficiencyDisclaimer:
+        'These correspondences with CEFR, IELTS and TOEFL are approximate and provided for orientation only; they are not official conversions and should not be used as substitutes for the respective tests.',
+      dimensionsTitle: '12-Dimension Grammar Profile (Part A)',
       score: 'Score',
       level: 'Level',
       recommendations: 'Recommendations',
       priorityDimensions: 'Priority Dimensions',
-      overallOnlyNote: '12 of the total 72 questions currently count toward the overall score and CEFR band only; they are outside the client-provided 12-by-5 dimension matrix.',
+      overallOnlyNote:
+        'All 30 Part B vocabulary questions (Q61–90) count toward Part B, overall, and CEFR scores only. They are not included in the grammar radar chart above.',
       questionReview: 'Question Review',
       all: 'All',
       incorrect: 'Incorrect',
@@ -324,7 +336,7 @@ export const messages = {
       colCefr: 'CEFR',
       colWeakAreas: 'Weak Areas',
       colRecommendation: 'Recommendation',
-      questionTableTitle: 'Question Correctness Rate (72 Questions)',
+      questionTableTitle: 'Question Correctness Rate (90 Questions)',
       colQuestionNum: 'Q#',
       colQuestionId: 'Question ID',
       colPart: 'Part',
@@ -356,7 +368,7 @@ export const messages = {
       learners: {
         tag: '學習者',
         title: '升讀大學前先了解你的準備程度。',
-        subtitle: 'EDT 透過嚴謹的 72 題診斷及詳細能力輪廓，協助高階學習者評估 C1 及 C2 英語水平。',
+        subtitle: 'EDT 透過嚴謹的 90 題診斷（60 題語法 + 30 題詞彙）及 12 個語法維度分析，協助高階學習者評估 C1 及 C2 英語水平。',
         cta: '開始診斷測試',
         sections: [
           {
@@ -365,7 +377,7 @@ export const messages = {
           },
           {
             heading: '可操作的報告',
-            body: '結果對應 12 個診斷維度及 CEFR 等級，標示需要優先鞏固的範疇。',
+            body: '結果對應 12 個語法維度（甲部）及 CEFR 等級，標示需要優先鞏固的範疇。',
           },
           {
             heading: '規劃下一步',
@@ -447,11 +459,11 @@ export const messages = {
       steps: [
         {
           title: '完成診斷',
-          body: '完成限時 72 題測試，涵蓋高階語法、詞彙及學術閱讀準備度。',
+          body: '完成限時 90 題測試（60 題應用語法 + 30 題詞彙），對應 CEFR C1 及 C2 水平。',
         },
         {
           title: '取得能力輪廓',
-          body: '結果會對應至 12 個診斷維度，並提供符合 CEFR 的整體準備程度。',
+          body: '結果會對應至 12 個語法維度（甲部），並提供符合 CEFR 的整體準備程度。',
         },
         {
           title: '規劃進步方向',
@@ -503,7 +515,7 @@ export const messages = {
       invalid: '未能驗證憑證。請檢查代碼後再試。',
       alreadyUsed: '此憑證已被使用。',
       notFound: '找不到憑證代碼。請檢查後再試。',
-      summary: ['72 題', '60 分鐘', '12 個維度', 'CEFR C1/C2'],
+      summary: ['90 題', '60 分鐘', '12 個語法維度', 'CEFR C1/C2'],
       showCode: '顯示憑證代碼',
       hideCode: '隱藏憑證代碼',
       purchase: '購買憑證',
@@ -517,7 +529,7 @@ export const messages = {
         {
           name: '個人診斷',
           price: 'HK$ 298',
-          features: ['1 張一次性憑證', '72 題，60 分鐘', '完整 CEFR 對應報告', '12 個能力維度分析'],
+          features: ['1 張一次性憑證', '90 題，60 分鐘', '完整 CEFR 對應報告', '12 個語法維度分析（甲部）'],
           cta: '選擇方案',
         },
         {
@@ -542,12 +554,12 @@ export const messages = {
     },
     info: {
       title: '開始之前',
-      subtitle: '請提供你的資料，這些資料將顯示於診斷報告。',
+      subtitle: '請提供你的資料，這些資料將顯示於診斷報告。測試共 90 題（60 題語法 + 30 題詞彙），限時 60 分鐘。',
       userGroup: '學習群組',
       name: '姓名',
       id: '學生 / 考生編號',
       optional: '選填',
-      warning: '按下開始測試後，60 分鐘計時會立即開始，不能暫停。',
+      warning: '按下開始測試後，60 分鐘計時會立即開始，不能暫停。你將作答 90 道選擇題。',
       start: '開始測試',
     },
     quiz: {
@@ -598,18 +610,30 @@ export const messages = {
       cohortRanking: '你的群組排名',
       studyGroup: '在你的學習群組中',
       allLearners: '在所有學習者中',
+      cohortRank: '群組名次',
+      cohortRankPending: '尚待更多提交',
+      cohortRankOf: '/',
       percentile: '百分位',
       cohortSize: '群組人數',
       userGroup: '學習群組',
       yourScore: '你的分數',
       cohortAverage: '群組平均',
       basedOn: '根據目前提交紀錄計算。',
-      dimensionsTitle: '12 個能力維度分析',
+      partBVocabI: '乙部 I',
+      partBVocabII: '乙部 II',
+      vocabCollocations: '搭配詞及慣用語',
+      vocabSpecialized: '細緻及專門詞彙',
+      approxIelts: '參考 IELTS',
+      approxToefl: '參考 TOEFL iBT',
+      proficiencyDisclaimer:
+        'CEFR、IELTS 及 TOEFL 的對應僅供參考，並非官方換算，不應取代相關考試的正式成績。',
+      dimensionsTitle: '12 個語法維度分析（甲部）',
       score: '分數',
       level: '等級',
       recommendations: '建議',
       priorityDimensions: '優先提升範疇',
-      overallOnlyNote: '第 61 至 72 題目前只計入整體分數及 CEFR 等級，未納入客戶提供的 12×5 維度矩陣。',
+      overallOnlyNote:
+        '乙部全部 30 題詞彙（第 61 至 90 題）只計入乙部、整體及 CEFR 分數，不納入上方的語法雷達圖。',
       questionReview: '題目回顧',
       all: '全部',
       incorrect: '錯誤',
@@ -663,7 +687,7 @@ export const messages = {
       colCefr: 'CEFR',
       colWeakAreas: '弱項範疇',
       colRecommendation: '建議',
-      questionTableTitle: '各題正確率（72 題）',
+      questionTableTitle: '各題正確率（90 題）',
       colQuestionNum: '題號',
       colQuestionId: '題目編號',
       colPart: '部分',

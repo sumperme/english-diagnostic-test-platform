@@ -10,7 +10,7 @@ English Diagnostic Test (EDT) is a web platform for C1/C2 English assessment. Th
 
 | Role | How to sign in | Main purpose |
 |------|----------------|--------------|
-| **Student** | Single-use e-voucher code | Take the 72-question test and view personal report |
+| **Student** | Single-use e-voucher code | Take the 90-question test and view personal report |
 | **Teacher** | Teacher credential key | View class cohort performance and submissions |
 | **Admin** | Admin password at `/admin` | Manage vouchers, user groups, and teacher keys |
 
@@ -39,15 +39,15 @@ Admin links teacher key to same group  →  Teacher sees that group's submission
 1. Open the site → click **Log in** or **Start Diagnostic Test**.
 2. Enter your **e-voucher code** (format `XXXX-XXXX-XXXX`).
 3. Complete candidate info (name, ID).
-4. Take the **72-question, 60-minute** test.
-5. View your **diagnostic report** (12 dimensions, CEFR band, PDF export).
+4. Take the **90-question (60 grammar + 30 vocabulary), 60-minute** test.
+5. View your **diagnostic report** (12 grammar dimensions, Part B vocab sub-scores, CEFR band with approximate IELTS/TOEFL, PDF export).
 
 ### What students can see
 
 | Data | Access |
 |------|--------|
 | Own test answers & report | Yes — immediately after submit |
-| Cohort percentile (all learners + own group) | Yes — on results screen |
+| Cohort rank (all learners + own group) | Yes — on results screen (1st of N when enough submissions) |
 | Other students' names or scores | No |
 | Teacher dashboard | No |
 | Admin panel | No |
@@ -78,9 +78,9 @@ Dashboard for **their assigned user group only**:
 |---------|---------|
 | Summary | Total vouchers, used vouchers, submission count |
 | Overall stats | Mean, median, std dev; score distribution chart |
-| 12 dimensions | Mean and std dev per skill area |
+| 12 grammar dimensions | Mean and std dev per Part A skill area |
 | Student table | Name, ID, test date, CEFR, weak areas, recommendation |
-| Question analysis | Correctness rate for all 72 questions (sortable) |
+| Question analysis | Correctness rate for all 90 questions (sortable) |
 
 ### What teachers can manage
 
@@ -166,9 +166,9 @@ When a student submits a test, the server stores:
 | Field | Used by |
 |-------|---------|
 | Candidate name, ID, test date | Teacher dashboard |
-| Total score (0–72) | Teacher stats, percentiles |
-| 12 dimension scores | Teacher dimension cards |
-| Per-question correctness (72 items) | Teacher question analysis |
+| Total score (0–90) | Teacher stats, percentiles |
+| 12 grammar dimension scores (Part A) | Teacher dimension cards |
+| Per-question correctness (90 items) | Teacher question analysis |
 | CEFR band, weak areas, recommendation | Teacher student table |
 | User group | Scopes teacher access |
 

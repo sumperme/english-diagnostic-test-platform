@@ -162,6 +162,24 @@ npx wrangler d1 execute edt-diagnostic --local --command "INSERT INTO vouchers (
 
 ---
 
+## v3 test bank migration — reset submission data
+
+Paper I was expanded from 72 to **90 questions** in report version **3.0.0**. Old submissions use incompatible dimension keys and score ranges. After deploying v3, clear historical submissions so teacher percentiles and score buckets are not mixed:
+
+```powershell
+npx wrangler d1 execute edt-diagnostic --remote --command "DELETE FROM submissions;"
+```
+
+Optionally clear stale sessions:
+
+```powershell
+npx wrangler d1 execute edt-diagnostic --remote --command "DELETE FROM sessions;"
+```
+
+Vouchers and teacher credentials are unaffected.
+
+---
+
 ## Security reminders
 
 - Never commit `Evouchers.txt`, `seed-vouchers.sql`, or `.dev.vars`.

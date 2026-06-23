@@ -42,6 +42,53 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
+function normalizeUserGroup(userGroup: string | null | undefined) {
+  return userGroup?.trim() || DEFAULT_USER_GROUP;
+}
+
+/** Reclassify all submissions for a voucher when its user group changes. */
+async function syncSubmissionsUserGroupForVoucher(env: AdminEnv, voucherCode: string, userGroup: string) {
+  await env.DB.prepare(
+    `UPDATE submissions
+     SET user_group = ?
+     WHERE session_token IN (SELECT token FROM sessions WHERE voucher_code = ?)`,
+  )
+    .bind(userGroup, voucherCode)
+    .run();
+
+  const result = await env.DB.prepare(
+    `SELECT id, payload FROM submissions
+     WHERE session_token IN (SELECT token FROM sessions WHERE voucher_code = ?)`,
+  )
+    .bind(voucherCode)
+    .all<{ id: string; payload: string }>();
+
+  const updates = (result.results ?? [])
+    .map((row) => {
+      try {
+        const payload = JSON.parse(row.payload) as {
+          candidateInfo?: { userGroup?: string; [key: string]: unknown };
+          [key: string]: unknown;
+        };
+        if (!payload.candidateInfo || typeof payload.candidateInfo !== 'object') {
+          return null;
+        }
+        payload.candidateInfo.userGroup = userGroup;
+        return env.DB.prepare('UPDATE submissions SET payload = ? WHERE id = ?').bind(
+          JSON.stringify(payload),
+          row.id,
+        );
+      } catch {
+        return null;
+      }
+    })
+    .filter((stmt): stmt is D1PreparedStatement => stmt != null);
+
+  if (updates.length > 0) {
+    await env.DB.batch(updates);
+  }
+}
+
 function mapVoucher(row: VoucherRow) {
   const usesAllowed = Number(row.uses_allowed ?? 1);
   const useCount = Number(row.use_count ?? 0);
@@ -175,13 +222,14 @@ export async function adminUpdateVoucher(request: Request, env: AdminEnv, codePa
   };
 
   const existing = await env.DB.prepare(
-    'SELECT code, use_count FROM vouchers WHERE code = ?',
-  ).bind(code).first<{ code: string; use_count: number }>();
+    'SELECT code, use_count, user_group FROM vouchers WHERE code = ?',
+  ).bind(code).first<{ code: string; use_count: number; user_group: string | null }>();
   if (!existing) {
     return json({ error: 'Voucher not found' }, { status: 404 }, origin);
   }
 
-  const userGroup = (body.userGroup ?? DEFAULT_USER_GROUP).trim() || DEFAULT_USER_GROUP;
+  const previousUserGroup = normalizeUserGroup(existing.user_group);
+  const userGroup = normalizeUserGroup(body.userGroup);
 
   let usesAllowed: number | undefined;
   if (body.usesAllowed != null) {
@@ -210,6 +258,10 @@ export async function adminUpdateVoucher(request: Request, env: AdminEnv, codePa
     )
       .bind(userGroup, body.educationLevel ?? null, body.remark ?? null, body.soldTo ?? null, code)
       .run();
+  }
+
+  if (userGroup !== previousUserGroup) {
+    await syncSubmissionsUserGroupForVoucher(env, code, userGroup);
   }
 
   const row = await env.DB.prepare(
@@ -417,11 +469,15 @@ export async function handleAdminRequest(
 }
 
 export function computePercentileStats(
-  stats: { cohortSize: number; cohortMean: number | null; atOrBelow: number } | null,
+  stats: { cohortSize: number; cohortMean: number | null; strictlyAbove: number } | null,
 ) {
-  const cohortSize = Number(stats?.cohortSize ?? 1);
+  const cohortSize = Number(stats?.cohortSize ?? 0);
   const cohortMean = stats?.cohortMean == null ? null : Math.round(Number(stats.cohortMean) * 10) / 10;
+  const strictlyAbove = Number(stats?.strictlyAbove ?? 0);
+  const cohortRank = cohortSize > 0 ? strictlyAbove + 1 : null;
   const percentileRank =
-    cohortSize > 0 ? Math.round((Number(stats?.atOrBelow ?? 1) / cohortSize) * 100) : null;
-  return { cohortSize, cohortMean, percentileRank };
+    cohortSize >= 2 && cohortRank != null
+      ? Math.round(((cohortSize - cohortRank) / (cohortSize - 1)) * 100)
+      : null;
+  return { cohortSize, cohortMean, cohortRank, percentileRank };
 }

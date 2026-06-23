@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
-import { ANSWER_KEY, PART_A, PART_B } from '../data/questions';
+import { ANSWER_KEY, PART_A, PART_B, PART_B_VOCAB_I, PART_B_VOCAB_II } from '../data/questions';
 import { useLocale } from '../i18n/LocaleContext';
 import { downloadReportPdf } from '../lib/pdf';
 import { formatDate } from '../lib/format';
@@ -9,6 +9,17 @@ import { levelBadgeClass, scoreBarColor } from '../lib/scoring';
 import type { ReportResult } from '../types';
 
 type Filter = 'all' | 'incorrect' | 'unanswered';
+
+function formatCohortRankDisplay(
+  rank: number | null | undefined,
+  size: number,
+  pendingLabel: string,
+  ofLabel: string,
+): string {
+  if (size < 2) return pendingLabel;
+  if (rank == null) return '—';
+  return `${rank} ${ofLabel} ${size}`;
+}
 
 function ReviewSection({
   title,
@@ -77,7 +88,8 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
     return true;
   };
   const aQuestions = PART_A.filter((q) => filterQuestion(q.id));
-  const bQuestions = PART_B.filter((q) => filterQuestion(q.id));
+  const bVocabIQuestions = PART_B_VOCAB_I.filter((q) => filterQuestion(q.id));
+  const bVocabIIQuestions = PART_B_VOCAB_II.filter((q) => filterQuestion(q.id));
 
   const exportPdf = async () => {
     if (!reportRef.current) return;
@@ -128,11 +140,13 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
             </div>
           </section>
 
-          <section className="grid grid-cols-3 gap-4 print-section">
+          <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 print-section">
             {[
-              { label: t.report.partA, sub: t.report.appliedGrammar, correct: result.scores.partA.correct, total: 36, pct: result.scores.partA.pct },
-              { label: t.report.partB, sub: t.report.vocabulary, correct: result.scores.partB.correct, total: 36, pct: result.scores.partB.pct },
-              { label: t.report.final, sub: t.report.overallScore, correct: result.scores.total.correct, total: 72, pct: result.scores.total.pct, hi: true },
+              { label: t.report.partA, sub: t.report.appliedGrammar, correct: result.scores.partA.correct, total: result.scores.partA.total, pct: result.scores.partA.pct },
+              { label: t.report.partB, sub: t.report.vocabulary, correct: result.scores.partB.correct, total: result.scores.partB.total, pct: result.scores.partB.pct },
+              { label: t.report.partBVocabI, sub: t.report.vocabCollocations, correct: result.scores.partBVocabI.correct, total: result.scores.partBVocabI.total, pct: result.scores.partBVocabI.pct },
+              { label: t.report.partBVocabII, sub: t.report.vocabSpecialized, correct: result.scores.partBVocabII.correct, total: result.scores.partBVocabII.total, pct: result.scores.partBVocabII.pct },
+              { label: t.report.final, sub: t.report.overallScore, correct: result.scores.total.correct, total: result.scores.total.total, pct: result.scores.total.pct, hi: true },
             ].map((score) => (
               <div key={score.label} className={`rounded-2xl border p-5 text-center ${score.hi ? 'border-edt-forest bg-edt-forest text-edt-neon' : 'border-slate-100 bg-white'}`}>
                 <p className={`mb-1 text-xs font-bold uppercase tracking-widest ${score.hi ? 'text-edt-neon' : 'text-slate-400'}`}>{score.label}</p>
@@ -153,6 +167,17 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
             </div>
             <p className="mb-2 text-sm font-semibold opacity-90">{result.cefrBand.headline}</p>
             <p className="text-sm leading-relaxed opacity-80">{result.cefrBand.description}</p>
+            <div className="mt-4 grid gap-3 border-t border-current/10 pt-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.report.approxIelts}</p>
+                <p className="text-sm font-semibold opacity-90">{result.cefrBand.ielts}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.report.approxToefl}</p>
+                <p className="text-sm font-semibold opacity-90">{result.cefrBand.toefl}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed italic opacity-70">{t.report.proficiencyDisclaimer}</p>
           </section>
 
           {result.backendData ? (
@@ -162,7 +187,7 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
                 {[
                   {
                     title: t.report.studyGroup,
-                    percentile: result.backendData.groupPercentileRank,
+                    rank: result.backendData.groupCohortRank,
                     mean: result.backendData.groupCohortMean,
                     size: result.backendData.groupCohortSize,
                     accent: 'border-emerald-100 bg-emerald-50/40',
@@ -170,7 +195,7 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
                   },
                   {
                     title: t.report.allLearners,
-                    percentile: result.backendData.percentileRank,
+                    rank: result.backendData.cohortRank,
                     mean: result.backendData.cohortMean,
                     size: result.backendData.cohortSize,
                     accent: 'border-sky-100 bg-sky-50/40',
@@ -181,8 +206,10 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
                     <p className="mb-3 text-sm font-bold text-slate-700">{cohort.title}</p>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.percentile}</p>
-                        <p className={`text-2xl font-extrabold ${cohort.valueCls}`}>{cohort.percentile ?? '-'}</p>
+                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortRank}</p>
+                        <p className={`text-lg font-extrabold leading-snug ${cohort.size < 2 ? 'text-sm font-semibold text-slate-500' : cohort.valueCls}`}>
+                          {formatCohortRankDisplay(cohort.rank, cohort.size, t.report.cohortRankPending, t.report.cohortRankOf)}
+                        </p>
                       </div>
                       <div className="rounded-xl bg-white/80 p-3 text-center">
                         <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
@@ -278,9 +305,14 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
             </div>
           </div>
           {aQuestions.length > 0 ? <ReviewSection title={t.report.appliedGrammar} questions={aQuestions} result={result} /> : null}
-          {bQuestions.length > 0 ? (
+          {bVocabIQuestions.length > 0 ? (
             <div className="mt-4">
-              <ReviewSection title={t.report.vocabulary} questions={bQuestions} result={result} />
+              <ReviewSection title={`${t.report.vocabulary} — ${t.report.vocabCollocations}`} questions={bVocabIQuestions} result={result} />
+            </div>
+          ) : null}
+          {bVocabIIQuestions.length > 0 ? (
+            <div className="mt-4">
+              <ReviewSection title={`${t.report.vocabulary} — ${t.report.vocabSpecialized}`} questions={bVocabIIQuestions} result={result} />
             </div>
           ) : null}
           {allQuestions.filter((q) => filterQuestion(q.id)).length === 0 ? (

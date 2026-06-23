@@ -52,11 +52,11 @@ type TeacherSubmissionRow = {
 const DEFAULT_USER_GROUP = 'General Learner';
 
 const SCORE_BUCKETS = [
-  { label: 'B1 (0–25)', min: 0, max: 25 },
-  { label: 'B2 (26–39)', min: 26, max: 39 },
-  { label: 'C1 (40–53)', min: 40, max: 53 },
-  { label: 'C1+ (54–63)', min: 54, max: 63 },
-  { label: 'C2 (64–72)', min: 64, max: 72 },
+  { label: '≤A2 (0–26)', min: 0, max: 26 },
+  { label: 'B1 (27–40)', min: 27, max: 40 },
+  { label: 'B2 (41–56)', min: 41, max: 56 },
+  { label: 'C1 (57–74)', min: 57, max: 74 },
+  { label: 'C2 (75–90)', min: 75, max: 90 },
 ];
 
 const json = (body: unknown, init: ResponseInit = {}, origin?: string) =>
@@ -236,16 +236,16 @@ async function submit(request: Request, env: Env, origin?: string) {
   }
 
   const allStats = await env.DB.prepare(
-    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score <= ? THEN 1 ELSE 0 END) as atOrBelow FROM submissions',
+    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score > ? THEN 1 ELSE 0 END) as strictlyAbove FROM submissions',
   )
     .bind(totalScore)
-    .first<{ cohortSize: number; cohortMean: number | null; atOrBelow: number }>();
+    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
 
   const groupStats = await env.DB.prepare(
-    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score <= ? THEN 1 ELSE 0 END) as atOrBelow FROM submissions WHERE user_group = ?',
+    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score > ? THEN 1 ELSE 0 END) as strictlyAbove FROM submissions WHERE user_group = ?',
   )
     .bind(totalScore, userGroup)
-    .first<{ cohortSize: number; cohortMean: number | null; atOrBelow: number }>();
+    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
 
   const all = computePercentileStats(allStats);
   const group = computePercentileStats(groupStats);
@@ -255,9 +255,11 @@ async function submit(request: Request, env: Env, origin?: string) {
       submissionId,
       userGroup,
       percentileRank: all.percentileRank,
+      cohortRank: all.cohortRank,
       cohortSize: all.cohortSize,
       cohortMean: all.cohortMean,
       groupPercentileRank: group.percentileRank,
+      groupCohortRank: group.cohortRank,
       groupCohortSize: group.cohortSize,
       groupCohortMean: group.cohortMean,
     },
@@ -349,18 +351,18 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
 
   // Per-dimension stats — aggregate from dimension_scores column (fallback to payload)
   const DIMENSION_KEYS = [
-    { id: 1, key: 'nounsArticles', name: 'Nouns and Articles', short: 'Nouns' },
-    { id: 2, key: 'pronouns', name: 'Pronouns', short: 'Pronouns' },
-    { id: 3, key: 'verbsTenses', name: 'Verbs and Tenses', short: 'Tenses' },
-    { id: 4, key: 'subjectVerbAgreement', name: 'Subject-Verb Agreement', short: 'Agreement' },
-    { id: 5, key: 'adjectivesAdverbs', name: 'Adjectives and Adverbs', short: 'Adj/Adv' },
-    { id: 6, key: 'prepositions', name: 'Prepositions', short: 'Preps' },
-    { id: 7, key: 'conjunctions', name: 'Conjunctions', short: 'Conj.' },
-    { id: 8, key: 'sentenceStructure', name: 'Sentence Structure', short: 'Structure' },
-    { id: 9, key: 'vocabSynonymsAntonyms', name: 'Vocabulary (Synonyms/Antonyms)', short: 'Vocab I' },
-    { id: 10, key: 'vocabContextual', name: 'Vocabulary (Contextual)', short: 'Vocab II' },
-    { id: 11, key: 'readingMainIdea', name: 'Reading Comprehension (Main Idea)', short: 'Main Idea' },
-    { id: 12, key: 'readingInference', name: 'Reading Comprehension (Inference)', short: 'Inference' },
+    { id: 1, key: 'tenses', name: 'Tenses', short: 'Tenses' },
+    { id: 2, key: 'adjectiveClauses', name: 'Adjective Clauses', short: 'Adj. Cl.' },
+    { id: 3, key: 'nounClauses', name: 'Noun Clauses', short: 'Noun Cl.' },
+    { id: 4, key: 'adverbialClausesReasons', name: 'Adverbs/Adverbial Clauses I: Reasons, Purposes & Results', short: 'Adv. Cl. I' },
+    { id: 5, key: 'adverbialClausesMannerTimePlace', name: 'Adverbs/Adverbial Clauses II: Manners, Time & Place', short: 'Adv. Cl. II' },
+    { id: 6, key: 'adverbialClausesConcession', name: 'Adverbs/Adverbial Clauses III: Concession & Contrast', short: 'Adv. Cl. III' },
+    { id: 7, key: 'conditionals', name: 'Conditionals', short: 'Conditionals' },
+    { id: 8, key: 'activePassive', name: 'Active vs Passive', short: 'Act/Pass' },
+    { id: 9, key: 'gerundsInfinitives', name: 'Gerunds & Infinitives', short: 'Ger/Inf' },
+    { id: 10, key: 'reportedSpeech', name: 'Reported Speech & Reported Questions', short: 'Reported' },
+    { id: 11, key: 'collocationsPrepositions', name: 'Collocations & Prepositions', short: 'Coll/Prep' },
+    { id: 12, key: 'subjectVerbAgreement', name: 'Subject-verb Agreement', short: 'S-V Agr.' },
   ];
 
   const dimValuesMap: Record<string, number[]> = {};
@@ -422,14 +424,16 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
   });
 
   // Build question stats
+  const PART_A_COUNT = 60;
+  const PART_B_COUNT = 30;
   const ALL_QIDS_ORDERED = [
-    ...Array.from({ length: 36 }, (_, i) => `A${i + 1}`),
-    ...Array.from({ length: 36 }, (_, i) => `B${i + 1}`),
+    ...Array.from({ length: PART_A_COUNT }, (_, i) => `A${i + 1}`),
+    ...Array.from({ length: PART_B_COUNT }, (_, i) => `B${i + 1}`),
   ];
 
   const questionStats = ALL_QIDS_ORDERED.map((qid, idx) => {
-    const part = (idx < 36 ? 'A' : 'B') as 'A' | 'B';
-    const canonicalNumber = idx < 36 ? idx + 1 : idx - 35;
+    const part = (idx < PART_A_COUNT ? 'A' : 'B') as 'A' | 'B';
+    const canonicalNumber = idx < PART_A_COUNT ? idx + 1 : idx - PART_A_COUNT + 61;
     const total = questionCountMap[qid] ?? 0;
     const correct = questionCorrectMap[qid] ?? 0;
     return {

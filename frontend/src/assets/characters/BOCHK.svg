@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <path d="M 197.945 167.238 L 197.945 86.085 M 237.945 127.238 L 237.945 57.238" stroke="#2D2D2D" stroke-width="6" stroke-linecap="round" fill="none" style="stroke-width: 6;"/>
+  <path d="M 147.945 433.238 L 147.945 277.238 L 197.945 227.238 L 197.945 167.238 L 277.945 87.238 L 277.945 433.238 L 147.945 433.238 Z" stroke="#2D2D2D" stroke-width="6" stroke-linejoin="round" style="stroke-width: 6; fill: rgb(97, 54, 230);"/>
+  <path d="M 197.945 387.238 L 197.945 167.238" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 147.945 387.238 L 197.945 332.238 M 147.945 332.238 L 197.945 387.238 M 197.945 387.238 L 277.945 332.238 M 197.945 332.238 L 277.945 387.238 M 147.945 332.238 L 197.945 277.238 M 147.945 277.238 L 197.945 332.238 M 197.945 332.238 L 277.945 277.238 M 197.945 277.238 L 277.945 332.238 M 197.945 277.238 L 277.945 222.238 M 197.945 222.238 L 277.945 277.238 M 197.945 222.238 L 277.945 167.238 M 197.945 167.238 L 240.445 196.457 L 277.945 222.238" stroke-width="4" stroke-linecap="round" style="stroke-width: 4; stroke: rgb(40, 39, 39);"/>
+  <path d="M 147.945 387.238 L 277.945 387.238" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 147.945 407.238 L 277.945 407.238" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 157.945 407.238 L 157.945 433.238 M 187.945 407.238 L 187.945 433.238 M 157.945 433.238 L 187.945 433.238" stroke="#2D2D2D" stroke-width="4" fill="none" style="stroke-width: 4;"/>
+  <path d="M 207.945 407.238 L 207.945 433.238 M 267.945 407.238 L 267.945 433.238 M 207.945 433.238 L 267.945 433.238" stroke="#2D2D2D" stroke-width="4" fill="none" style="stroke-width: 4;"/>
+  <circle cx="152.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="172.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="192.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="212.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="232.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="252.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <circle cx="272.945" cy="397.238" r="3" fill="#2D2D2D" style="stroke-width: 1;"/>
+  <g transform="matrix(1.434834, 0, 0, 1.411473, 197.944993, 186.316209)" style="">
+    <circle cx="9" cy="9" r="9" fill="white" style="" transform="matrix(1.335256, 0, 0, 1.294927, 0, -5.308693)"/>
+    <circle cx="12.017" cy="6.346" r="4.313" fill="#2D2D2D"/>
+  </g>
+  <g transform="matrix(1.434834, 0, 0, 1.411473, 243.459337, 186.316209)" style="">
+    <circle cx="9" cy="9" r="9" fill="white" style="" transform="matrix(1.335256, 0, 0, 1.294927, 0, -5.308693)"/>
+    <circle cx="12.017" cy="6.346" r="4.313" fill="#2D2D2D"/>
+  </g>
+</svg>

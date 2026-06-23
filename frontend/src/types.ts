@@ -38,9 +38,11 @@ export type BackendData = {
   submissionId: string;
   userGroup: string;
   percentileRank: number | null;
+  cohortRank: number | null;
   cohortSize: number;
   cohortMean: number | null;
   groupPercentileRank: number | null;
+  groupCohortRank: number | null;
   groupCohortSize: number;
   groupCohortMean: number | null;
 };
@@ -57,6 +59,8 @@ export type ReportResult = {
   scores: {
     partA: { correct: number; total: number; pct: number };
     partB: { correct: number; total: number; pct: number };
+    partBVocabI: { correct: number; total: number; pct: number };
+    partBVocabII: { correct: number; total: number; pct: number };
     total: { correct: number; total: number; pct: number };
   };
   dimensions: DimensionScore[];

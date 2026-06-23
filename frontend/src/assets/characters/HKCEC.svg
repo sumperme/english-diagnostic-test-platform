@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <path d="M 29.051 306.836 L 29.051 190.113 C 46.593 154.199 90.449 145.22 99.22 145.22 L 66.24 118.213 L 99.22 118.284 L 160.309 118.001 C 190.78 49.057 271.652 75.229 291.943 118.567 L 376.224 120.413 L 344.814 145.22 C 353.586 145.22 397.442 154.199 414.984 190.113 L 414.984 306.836 L 29.051 306.836 Z" fill="#FF9B6B" style="stroke-width: 1;"/>
+  <path d="M 28.798 306.836 L 414.731 306.836" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 28.798 306.836 L 28.798 190.113 C 46.34 154.199 116.51 145.22 177.908 181.135 L 177.908 306.836" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 28.798 190.113 C 46.34 154.199 90.196 145.22 98.967 145.22 L 66.283 118.509 L 98.967 118.284 L 177.908 118.284 L 177.908 181.135" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linejoin="round" style="stroke-width: 4;"/>
+  <path d="M 98.967 118.284 C 134.052 118.284 151.595 145.22 160.366 154.199" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 177.908 118.284 C 160.366 118.284 155.292 129.351 146.52 138.33" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 72.654 217.049 L 142.824 217.049" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 72.654 238.598 L 142.824 238.598" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 72.654 260.147 L 142.824 260.147" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 72.654 281.696 L 142.824 281.696" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 414.731 306.836 L 414.731 190.113 C 397.189 154.199 327.019 145.22 265.62 181.135 L 265.62 306.836" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 414.731 190.113 C 397.189 154.199 353.333 145.22 344.561 145.22 L 376.175 118.785 L 344.561 118.284 L 265.62 118.284 L 265.62 181.135" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linejoin="round" style="stroke-width: 4;"/>
+  <path d="M 344.561 118.284 C 309.476 118.284 291.934 145.22 283.163 154.199" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 265.62 118.284 C 283.163 118.284 291.921 125.384 300.692 134.363" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 300.705 217.049 L 370.875 217.049" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 300.705 238.598 L 370.875 238.598" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 300.705 260.147 L 370.875 260.147" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 300.705 281.696 L 370.875 281.696" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 186.68 306.836 L 186.68 270.921 L 256.849 270.921 L 256.849 306.836" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linejoin="round" style="stroke-width: 4;"/>
+  <path d="M 186.68 252.964 L 256.849 252.964" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 177.908 235.007 L 265.62 235.007" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linecap="round" style="stroke-width: 4;"/>
+  <path d="M 147.37 139.18 C 177.1 53.017 265.514 54.878 300.692 135.78" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 181.05 118.33 C 216.035 74.744 255.569 98.904 266.701 116.687" fill="none" stroke="#2D2D2D" stroke-width="4" style="stroke-width: 4;"/>
+  <path d="M 160.366 154.199 L 177.908 172.156 L 265.62 172.156 L 283.163 154.199" fill="none" stroke="#2D2D2D" stroke-width="4" stroke-linejoin="round" style="stroke-width: 4;"/>
+  <circle cx="282.731" cy="118.364" r="14" fill="white" stroke="#2D2D2D" style="stroke-width: 3.38031px;" transform="matrix(1.754242, 0, 0, 1.795732, -312.807436, -67.330056)"/>
+  <circle cx="326.731" cy="118.364" r="14" fill="white" stroke="#2D2D2D" style="stroke-width: 3.38031px;" transform="matrix(1.754242, 0, 0, 1.795732, -312.807436, -67.330056)"/>
+  <g id="fallback-pupils" transform="matrix(1.754242, 0, 0, 1.795732, 11.255143, -43.332276)" style="">
+    <circle cx="98" cy="105" r="5" fill="#2D2D2D"/>
+    <circle cx="142" cy="105" r="5" fill="#2D2D2D"/>
+  </g>
+</svg>

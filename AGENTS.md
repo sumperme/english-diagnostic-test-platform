@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # EDT Design System and Agent Instructions
 
 This file is the source of truth for AI-assisted development on the English Diagnostic Test. Follow these rules when creating or editing UI in this repository.
@@ -11,6 +16,16 @@ The client templates define the canonical EDT visual identity. Use the dark acad
 - `Client_Feedback/Template_report.html`
 
 Do not infer design from the legacy `index.html` Inter/sky theme for marketing pages. The legacy theme is only acceptable inside dense assessment workflows where light surfaces improve readability.
+
+## Test Bank and Scoring
+
+Before adding, removing, or remapping MCQs, read [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md).
+
+- Question content lives in `frontend/src/data/` (`questions.ts`, `dimensions.ts`, `cefr.ts`). Cloudflare D1 stores submission results only — not the test bank.
+- Current model: **90 MCQs** (60 Part A grammar + 30 Part B vocabulary), **12 Part A grammar dimensions × 5 MCQs**, **all Part B overall-only** for the radar chart. See [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md).
+- Always score by stable question ID (`A1`, `B13`, …), never by shuffled display index (see Forbidden Patterns).
+- After changing dimensions or question counts, sync duplicated worker metadata in `worker/src/index.ts` (`DIMENSION_KEYS`, `SCORE_BUCKETS`, `ALL_QIDS_ORDERED`).
+- Do not hardcode new totals in UI without updating CEFR bands (`cefr.ts`), worker score buckets, and both EN / zh-HK i18n strings.
 
 ## Design Tokens
 
@@ -169,8 +184,7 @@ export function AssessmentCard({ children }: { children: React.ReactNode }) {
 ## Report Rules
 
 - Results pages may use light report cards for readability, but the header and export frame should reference the EDT palette.
-- Radar chart axes for the current scoring model are 12 dimensions with a maximum raw score of 5.
-- Questions `B25` through `B36` are not part of the current 12-by-5 dimension matrix. They count toward the overall 72-question score and CEFR band until the client provides additional weighting.
+- Dimension scoring layout, overall-only questions, and CEFR breakpoints are defined in [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md). Current values: 12 Part A grammar dimensions, max raw score 5 per dimension, 90 total MCQs.
 - All report labels, narratives, buttons, and chart labels must read from the i18n dictionaries.
 
 ## Forbidden Patterns

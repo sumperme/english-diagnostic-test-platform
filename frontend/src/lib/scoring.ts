@@ -1,7 +1,17 @@
 import { CEFR_BANDS } from '../data/cefr';
 import { DIMENSIONS, OVERALL_ONLY_QIDS } from '../data/dimensions';
-import { ALL_QUESTIONS, ANSWER_KEY, PART_A, PART_B, type OptionKey, type Question } from '../data/questions';
+import {
+  ALL_QUESTIONS,
+  ANSWER_KEY,
+  PART_A,
+  PART_B,
+  PART_B_VOCAB_I,
+  PART_B_VOCAB_II,
+  type OptionKey,
+  type Question,
+} from '../data/questions';
 import type { Answers, CandidateInfo, DimensionScore, ReportResult } from '../types';
+import { percent } from './format';
 
 const VALID_OPTION_KEYS = new Set<OptionKey>(['A', 'B', 'C', 'D']);
 
@@ -15,10 +25,12 @@ export function sanitizeAnswers(answers: Answers): Answers {
   }
   return sanitized;
 }
-import { percent } from './format';
 
-export const APP_VERSION = '2.0.0';
+export const APP_VERSION = '3.0.0';
 export const TOTAL_SECS = 3600;
+
+const countCorrect = (questions: Question[], answers: Answers) =>
+  questions.filter((q) => answers[q.id] === ANSWER_KEY[q.id]).length;
 
 const getCEFRBand = (total: number) =>
   CEFR_BANDS.find((band) => total >= band.min && total <= band.max) ?? CEFR_BANDS[0];
@@ -68,8 +80,17 @@ export function computeReport(
   const safeAnswers = sanitizeAnswers(answers);
   const now = Date.now();
   const durationSec = Math.round((now - startedAt) / 1000);
-  const partACorrect = PART_A.filter((q) => safeAnswers[q.id] === ANSWER_KEY[q.id]).length;
-  const partBCorrect = PART_B.filter((q) => safeAnswers[q.id] === ANSWER_KEY[q.id]).length;
+
+  const partATotal = PART_A.length;
+  const partBTotal = PART_B.length;
+  const partBVocabITotal = PART_B_VOCAB_I.length;
+  const partBVocabIITotal = PART_B_VOCAB_II.length;
+  const grandTotal = partATotal + partBTotal;
+
+  const partACorrect = countCorrect(PART_A, safeAnswers);
+  const partBCorrect = countCorrect(PART_B, safeAnswers);
+  const partBVocabICorrect = countCorrect(PART_B_VOCAB_I, safeAnswers);
+  const partBVocabIICorrect = countCorrect(PART_B_VOCAB_II, safeAnswers);
   const total = partACorrect + partBCorrect;
 
   const dimensions = DIMENSIONS.map((dimension) => {
@@ -98,9 +119,19 @@ export function computeReport(
     answers: safeAnswers,
     questions,
     scores: {
-      partA: { correct: partACorrect, total: 36, pct: percent(partACorrect, 36) },
-      partB: { correct: partBCorrect, total: 36, pct: percent(partBCorrect, 36) },
-      total: { correct: total, total: 72, pct: percent(total, 72) },
+      partA: { correct: partACorrect, total: partATotal, pct: percent(partACorrect, partATotal) },
+      partB: { correct: partBCorrect, total: partBTotal, pct: percent(partBCorrect, partBTotal) },
+      partBVocabI: {
+        correct: partBVocabICorrect,
+        total: partBVocabITotal,
+        pct: percent(partBVocabICorrect, partBVocabITotal),
+      },
+      partBVocabII: {
+        correct: partBVocabIICorrect,
+        total: partBVocabIITotal,
+        pct: percent(partBVocabIICorrect, partBVocabIITotal),
+      },
+      total: { correct: total, total: grandTotal, pct: percent(total, grandTotal) },
     },
     dimensions,
     cefrBand,
