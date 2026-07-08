@@ -64,16 +64,6 @@ export function VoucherScreen({
               <p className="text-sm leading-relaxed text-edt-soft/75">{t.voucher.subtitle}</p>
             </div>
 
-            <div className="mb-6 rounded-2xl border border-[rgba(170,169,90,0.2)] bg-white p-6 shadow-lg">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                {t.voucher.summary.map((item) => (
-                  <div key={item} className="rounded-xl bg-edt-forest/5 p-3">
-                    <p className="font-semibold text-edt-forest">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <form onSubmit={submit} className="rounded-2xl border border-[rgba(170,169,90,0.2)] bg-white p-6 shadow-lg">
               <label className="mb-2 block text-sm font-semibold text-edt-forest">{t.voucher.label}</label>
               <div className="relative mb-2">
