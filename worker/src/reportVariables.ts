@@ -62,6 +62,8 @@ export type AttemptAnswerRow = {
   question_code: string;
   selected_option: string | null;
   is_correct: number | null;
+  /** 1-based served position; NULL for attempts predating randomization. */
+  display_order: number | null;
   canonical_number: number;
   part_code: string;
   part_skill: string | null;

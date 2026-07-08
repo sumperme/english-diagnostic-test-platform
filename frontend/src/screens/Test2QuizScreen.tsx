@@ -259,13 +259,16 @@ export function Test2QuizScreen({
   const currentResource =
     instance && currentItem?.resourceId != null ? instance.resources[currentItem.resourceId] : undefined;
 
+  // Range of served positions (1-based) for the current passage: the server
+  // keeps a passage's questions contiguous, so min..max is the block.
   const passageRange = useMemo(() => {
     if (!currentItem?.resourceId || !items.length) return null;
     const resourceId = currentItem.resourceId;
-    const related = items.filter((item) => item.resourceId === resourceId);
-    if (related.length === 0) return null;
-    const numbers = related.map((item) => item.canonicalNumber);
-    return { from: Math.min(...numbers), to: Math.max(...numbers) };
+    const positions = items
+      .map((item, index) => (item.resourceId === resourceId ? index + 1 : null))
+      .filter((position): position is number => position !== null);
+    if (positions.length === 0) return null;
+    return { from: Math.min(...positions), to: Math.max(...positions) };
   }, [currentItem?.resourceId, items]);
 
   const navLocked = submitting || audioPlaying;
@@ -453,7 +456,7 @@ export function Test2QuizScreen({
         <div className="mt-5">
           <QuestionCard
             q={currentQuestion}
-            displayNumber={currentItem.canonicalNumber}
+            displayNumber={currentIndex + 1}
             selected={answers[currentItem.questionCode]}
             onSelect={selectAnswer}
             preventCopy

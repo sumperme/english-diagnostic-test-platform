@@ -353,7 +353,7 @@ export function ResultsScreen({
             disabled={isExporting}
             className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isExporting ? '...' : t.report.downloadPdf}
+            {isExporting ? t.report.downloading : t.report.downloadPdf}
           </button>
         </div>
       </main>

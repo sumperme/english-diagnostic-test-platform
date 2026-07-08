@@ -292,6 +292,7 @@ export const messages = {
       correct: 'Correct',
       notAnswered: 'Not answered',
       downloadPdf: 'Download Report (PDF)',
+      downloading: 'Downloading…',
       duration: 'Duration',
       backendError: 'Results could not be saved to the server. Your diagnostic report is shown below.',
       dimensionNarratives: {
@@ -432,7 +433,6 @@ export const messages = {
             'Maintain your outstanding standard by engaging with advanced academic literature, lectures, and professional discourse.',
         },
       },
-      downloadingPdf: 'Preparing your PDF…',
       pdfError: 'PDF download failed. Please try again.',
     },
     teacher: {
@@ -769,6 +769,7 @@ export const messages = {
       correct: '正確答案',
       notAnswered: '未作答',
       downloadPdf: '下載 PDF',
+      downloading: '下載中…',
       duration: '時間',
       backendError: '未能將結果儲存至伺服器。你的診斷報告如下。',
       dimensionNarratives: {
@@ -897,7 +898,6 @@ export const messages = {
           recommendation: '建議持續接觸進階學術文獻、講座及專業討論，保持卓越水平。',
         },
       },
-      downloadingPdf: '正在準備 PDF…',
       pdfError: 'PDF 下載失敗，請重試。',
     },
     teacher: {

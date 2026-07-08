@@ -29,6 +29,8 @@ export type Test1SubmissionPayload = {
   durationSec?: number;
   autoSubmitted?: boolean;
   answers?: Record<string, string>;
+  /** Questions in the exact shuffled sequence the candidate saw. */
+  questions?: Array<{ id?: string }>;
   cefrBand?: {
     cefr?: string;
     label?: string;
@@ -119,6 +121,15 @@ export async function dualWriteTest1Attempt(
   const answers = payload.answers ?? {};
   const correctness = payload.reportSnapshot?.questionCorrectness ?? {};
 
+  // Candidate's shuffled on-screen sequence -> 1-based display_order, so the
+  // server-rendered PDF numbers questions exactly as the candidate saw them.
+  const orderByQid = new Map<string, number>();
+  (payload.questions ?? []).forEach((question, index) => {
+    if (question && typeof question.id === 'string' && !orderByQid.has(question.id)) {
+      orderByQid.set(question.id, index + 1);
+    }
+  });
+
   await env.DB.prepare(
     `INSERT INTO test_attempts (id, user_id, test_id, session_token, start_time, end_time, status, overall_score, created_at)
      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
@@ -135,9 +146,18 @@ export async function dualWriteTest1Attempt(
         qid in correctness ? (correctness[qid] === 1 ? 1 : 0) : selected ? 0 : null;
       return env.DB.prepare(
         `INSERT INTO test_attempt_answers
-         (test_attempt_id, question_group_id, question_id, question_code, selected_option, is_correct, answered_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(attemptId, row.group_id, row.question_id, row.question_code, selected, isCorrect, endTime);
+         (test_attempt_id, question_group_id, question_id, question_code, selected_option, is_correct, answered_at, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        attemptId,
+        row.group_id,
+        row.question_id,
+        row.question_code,
+        selected,
+        isCorrect,
+        endTime,
+        orderByQid.get(qid) ?? null,
+      );
     });
 
   if (answerStatements.length > 0) {

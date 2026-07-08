@@ -131,7 +131,7 @@ export async function handleReportRequest(
   }
 
   const answers = await env.DB.prepare(
-    `SELECT a.question_code, a.selected_option, a.is_correct,
+    `SELECT a.question_code, a.selected_option, a.is_correct, a.display_order,
             g.canonical_number, p.part_code, p.skill AS part_skill,
             d.key AS dimension_key,
             q.prompt_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer
@@ -140,7 +140,7 @@ export async function handleReportRequest(
      JOIN test_parts p ON p.id = g.test_part_id
      JOIN questions q ON q.id = a.question_id
      LEFT JOIN dimensions d ON d.id = g.dimension_id
-     WHERE a.test_attempt_id = ? ORDER BY g.canonical_number`,
+     WHERE a.test_attempt_id = ? ORDER BY COALESCE(a.display_order, g.canonical_number)`,
   )
     .bind(attemptId)
     .all<AttemptAnswerRow>();
@@ -551,7 +551,7 @@ async function renderReportPdf(
 
       // Keep the question number, label, and stem together across page breaks.
       ensure(44);
-      const qHeader = `Q${row.canonical_number}`;
+      const qHeader = `Q${row.display_order ?? row.canonical_number}`;
       text(qHeader, MARGIN, 9.5, { bold: true });
       const label = questionLabel(row);
       if (label) {

@@ -55,7 +55,7 @@ function ReviewSection({ title, rows }: { title: string; rows: AttemptReviewRow[
           return (
             <div key={row.questionCode} className="px-5 py-4">
               <p className="mb-2 text-sm leading-relaxed text-slate-700">
-                <span className="mr-1.5 text-xs font-bold text-slate-400">Q{row.canonicalNumber}</span>
+                <span className="mr-1.5 text-xs font-bold text-slate-400">Q{row.displayOrder ?? row.canonicalNumber}</span>
                 {row.prompt}
               </p>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -440,7 +440,7 @@ export function Test2ResultsScreen({
             disabled={isExporting}
             className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isExporting ? t.test2.downloadingPdf : t.report.downloadPdf}
+            {isExporting ? t.report.downloading : t.report.downloadPdf}
           </button>
         </div>
       </main>

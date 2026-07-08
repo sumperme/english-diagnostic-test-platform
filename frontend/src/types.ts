@@ -170,6 +170,8 @@ export type AttemptReviewRow = {
   questionCode: string;
   partCode: string;
   canonicalNumber: number;
+  /** 1-based served position; null for attempts predating randomization. */
+  displayOrder: number | null;
   prompt: string;
   options: AttemptOptions;
   correctAnswer: string;

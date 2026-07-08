@@ -106,6 +106,15 @@ const levelKeyForPct = (pct: number): LevelKey => {
   return 'needsWork';
 };
 
+/** Fisher-Yates; mutates and returns the given array. */
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
 export async function handleAttemptRequest(
   request: Request,
   env: AttemptsEnv,
@@ -203,9 +212,32 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
   }
   if (byGroup.size === 0) return json({ error: 'TEST_EMPTY' }, { status: 500 }, origin);
 
-  const served: ServedRow[] = [...byGroup.values()]
-    .map((variants) => variants[Math.floor(Math.random() * variants.length)])
-    .sort((a, b) => a.canonical_number - b.canonical_number);
+  // One random variant per group: every attempt covers every question group
+  // exactly once, whichever variants exist.
+  const chosen: ServedRow[] = [...byGroup.values()].map(
+    (variants) => variants[Math.floor(Math.random() * variants.length)],
+  );
+
+  // Random serving order. Parts keep their sequence (Part A before Part B);
+  // within a part, questions sharing a text resource (reading passage) stay
+  // contiguous while both the passage blocks and the questions inside each
+  // block are shuffled. Questions without a shared resource — or with their
+  // own audio clip — form single-question blocks, so listening shuffles fully.
+  const partCodes = [...new Set(chosen.map((row) => row.part_code))].sort();
+  const served: ServedRow[] = [];
+  for (const partCode of partCodes) {
+    const clusters = new Map<string, ServedRow[]>();
+    for (const row of chosen) {
+      if (row.part_code !== partCode) continue;
+      const key = row.shared_resource_id != null ? `resource:${row.shared_resource_id}` : `group:${row.group_id}`;
+      const cluster = clusters.get(key) ?? [];
+      cluster.push(row);
+      clusters.set(key, cluster);
+    }
+    for (const cluster of shuffleInPlace([...clusters.values()])) {
+      served.push(...shuffleInPlace(cluster));
+    }
+  }
 
   const attemptId = crypto.randomUUID();
   const statements = [
@@ -213,11 +245,11 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
       `INSERT INTO test_attempts (id, user_id, test_id, session_token, start_time, status, created_at)
        VALUES (?, ?, ?, ?, ?, 'in-progress', ?)`,
     ).bind(attemptId, user?.id ?? null, test.id, session.token, now, now),
-    ...served.map((row) =>
+    ...served.map((row, index) =>
       env.DB.prepare(
-        `INSERT INTO test_attempt_answers (test_attempt_id, question_group_id, question_id, question_code, selected_option, is_correct, answered_at)
-         VALUES (?, ?, ?, ?, NULL, NULL, NULL)`,
-      ).bind(attemptId, row.group_id, row.question_id, row.question_code),
+        `INSERT INTO test_attempt_answers (test_attempt_id, question_group_id, question_id, question_code, selected_option, is_correct, answered_at, display_order)
+         VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+      ).bind(attemptId, row.group_id, row.question_id, row.question_code, index + 1),
     ),
   ];
   await env.DB.batch(statements);
@@ -598,8 +630,9 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
     .bind(attemptId)
     .first<{ report_version: string; variables: string }>();
 
+  // Candidate's actual served sequence; canonical order for pre-display_order attempts.
   const reviewResult = await env.DB.prepare(
-    `SELECT a.question_code, a.selected_option, a.is_correct,
+    `SELECT a.question_code, a.selected_option, a.is_correct, a.display_order,
             g.canonical_number, p.part_code,
             q.prompt_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer
      FROM test_attempt_answers a
@@ -607,13 +640,14 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
      JOIN test_parts p ON p.id = g.test_part_id
      JOIN questions q ON q.id = a.question_id
      WHERE a.test_attempt_id = ?
-     ORDER BY g.canonical_number`,
+     ORDER BY COALESCE(a.display_order, g.canonical_number)`,
   )
     .bind(attemptId)
     .all<{
       question_code: string;
       selected_option: string | null;
       is_correct: number | null;
+      display_order: number | null;
       canonical_number: number;
       part_code: string;
       prompt_text: string;
@@ -630,6 +664,7 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
       questionCode: row.question_code,
       partCode: row.part_code,
       canonicalNumber: row.canonical_number,
+      displayOrder: row.display_order,
       prompt: row.prompt_text,
       options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
       correctAnswer: row.correct_answer,
