@@ -204,6 +204,7 @@ export const messages = {
     info: {
       title: 'Before You Begin',
       subtitle: 'Choose your paper, then enter your details for the report.',
+      backToVoucher: 'Back — use a different voucher',
       userGroup: 'Study group',
       name: 'Full Name',
       id: 'Student / Candidate ID',
@@ -681,6 +682,7 @@ export const messages = {
     info: {
       title: '開始之前',
       subtitle: '請先選擇卷別，再填寫將顯示於報告的個人資料。',
+      backToVoucher: '返回 — 使用其他測試碼',
       userGroup: '學習群組',
       name: '姓名',
       id: '學生 / 考生編號',

@@ -1,7 +1,6 @@
 import { FormEvent, useRef, useState } from 'react';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { verifyVoucher, ApiError } from '../lib/api';
-import { saveSession } from '../lib/session';
 import { useLocale } from '../i18n/LocaleContext';
 import { heroBackgroundStyle } from '../lib/landingAssets';
 import type { Session } from '../types';
@@ -28,8 +27,9 @@ export function VoucherScreen({
     setError('');
 
     try {
+      // The session lives in React state only (no browser storage), so a
+      // reload or another candidate on this device starts at voucher entry.
       const session = await verifyVoucher(code.trim());
-      saveSession(session);
       onSuccess(session);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'ALREADY_USED') {

@@ -10,7 +10,6 @@ import { Test2ResultsScreen } from './screens/Test2ResultsScreen';
 import { VoucherScreen } from './screens/VoucherScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { TeacherDashboardScreen } from './screens/TeacherDashboardScreen';
-import { loadSession } from './lib/session';
 import { loadTeacherSession, saveTeacherSession, verifyTeacherKey } from './lib/api';
 import type { CandidateInfo, MarketingPage, ReportResult, Session, TeacherSession, Test2Result } from './types';
 
@@ -42,7 +41,10 @@ function isTeacherPath() {
 export function App() {
   const [isAdmin, setIsAdmin] = useState(() => isAdminPath());
   const [screen, setScreen] = useState<Screen>(() => (isTeacherPath() ? 'teacher' : 'landing'));
-  const [session, setSession] = useState<Session | null>(() => loadSession());
+  // Voucher sessions are deliberately NOT restored from browser storage: every
+  // page load starts fresh at voucher entry, so the previous candidate's
+  // voucher is never auto-applied on a shared computer.
+  const [session, setSession] = useState<Session | null>(null);
   const [info, setInfo] = useState<CandidateInfo | null>(null);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [test2Result, setTest2Result] = useState<Test2Result | null>(null);
@@ -121,6 +123,12 @@ export function App() {
           onNext={(candidateInfo) => {
             setInfo(candidateInfo);
             setScreen('quiz');
+          }}
+          onBack={() => {
+            // Drop the current voucher session so the voucher screen is a
+            // clean slate for entering a different code.
+            setSession(null);
+            setScreen('voucher');
           }}
           onNavigate={goMarketing}
           onLogin={goVoucher}

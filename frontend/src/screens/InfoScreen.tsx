@@ -12,6 +12,7 @@ export function InfoScreen({
   tests,
   sessionToken,
   onNext,
+  onBack,
   onNavigate,
   onLogin,
   onLogoClick,
@@ -20,6 +21,7 @@ export function InfoScreen({
   tests?: TestAvailability[];
   sessionToken?: string;
   onNext: (info: CandidateInfo) => void;
+  onBack: () => void;
   onNavigate: (page: MarketingPage) => void;
   onLogin: () => void;
   onLogoClick: () => void;
@@ -95,6 +97,13 @@ export function InfoScreen({
         <div className="mx-auto w-full max-w-content px-6 md:px-10">
           <div className="mx-auto w-full max-w-[1200px] animate-fade-in">
             <div className="mb-8">
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-edt-olive transition-colors hover:text-edt-neon"
+              >
+                ← {t.info.backToVoucher}
+              </button>
               <div className="border-l-4 border-edt-neon pl-4 text-sm uppercase tracking-[0.22em] text-edt-neon">
                 CEFR C1 / C2
               </div>
