@@ -5,12 +5,14 @@ import { MarketingScreen } from './screens/MarketingScreen';
 import { PurchaseVoucherScreen } from './screens/PurchaseVoucherScreen';
 import { QuizScreen } from './screens/QuizScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
+import { Test2QuizScreen } from './screens/Test2QuizScreen';
+import { Test2ResultsScreen } from './screens/Test2ResultsScreen';
 import { VoucherScreen } from './screens/VoucherScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { TeacherDashboardScreen } from './screens/TeacherDashboardScreen';
 import { loadSession } from './lib/session';
 import { loadTeacherSession, saveTeacherSession, verifyTeacherKey } from './lib/api';
-import type { CandidateInfo, MarketingPage, ReportResult, Session, TeacherSession } from './types';
+import type { CandidateInfo, MarketingPage, ReportResult, Session, TeacherSession, Test2Result } from './types';
 
 type Screen =
   | 'landing'
@@ -43,6 +45,7 @@ export function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [info, setInfo] = useState<CandidateInfo | null>(null);
   const [result, setResult] = useState<ReportResult | null>(null);
+  const [test2Result, setTest2Result] = useState<Test2Result | null>(null);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(() => loadTeacherSession());
 
   useEffect(() => {
@@ -113,6 +116,8 @@ export function App() {
       {screen === 'info' ? (
         <InfoScreen
           userGroup={userGroup}
+          tests={session?.tests}
+          sessionToken={session?.sessionToken}
           onNext={(candidateInfo) => {
             setInfo(candidateInfo);
             setScreen('quiz');
@@ -123,17 +128,36 @@ export function App() {
         />
       ) : null}
       {screen === 'quiz' && info && session ? (
-        <QuizScreen
-          candidateInfo={info}
-          session={session}
-          onBack={() => setScreen('info')}
-          onSubmit={(nextResult) => {
-            setResult(nextResult);
-            setScreen('results');
-          }}
-        />
+        info.testCode === '02' ? (
+          <Test2QuizScreen
+            candidateInfo={info}
+            session={session}
+            onBack={() => setScreen('info')}
+            onSubmit={(nextResult) => {
+              setTest2Result(nextResult);
+              setResult(null);
+              setScreen('results');
+            }}
+          />
+        ) : (
+          <QuizScreen
+            candidateInfo={info}
+            session={session}
+            onBack={() => setScreen('info')}
+            onSubmit={(nextResult) => {
+              setResult(nextResult);
+              setTest2Result(null);
+              setScreen('results');
+            }}
+          />
+        )
       ) : null}
-      {screen === 'results' && result ? <ResultsScreen result={result} onHome={goHomeFromApp} /> : null}
+      {screen === 'results' && result && session ? (
+        <ResultsScreen result={result} session={session} onHome={goHomeFromApp} />
+      ) : null}
+      {screen === 'results' && !result && test2Result && session ? (
+        <Test2ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
+      ) : null}
     </>
   );
 }

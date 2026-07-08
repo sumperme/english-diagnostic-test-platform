@@ -162,6 +162,20 @@ npx wrangler d1 execute edt-diagnostic --local --command "INSERT INTO vouchers (
 
 ---
 
+## v4 unified test bank — migrate + cleanse (one-time)
+
+Version 4 moved both papers' question banks into D1 (migrations `0006`–`0010`: unified schema, Paper I + Paper II content, `voucher_test_usage`, Paper II activation) and added R2-backed audio + server-rendered PDFs. Rolling production onto v4 requires, once:
+
+```powershell
+.\scripts\upload-assets.ps1        # 21 MP3s + PDF fonts to R2 (see PUBLISH_UI.md for token auth)
+.\scripts\migrate-remote-db.ps1    # backup + apply 0006-0010 + cleanse old results
+.\scripts\publish-ui.ps1           # push code; Workers Builds deploys
+```
+
+The cleanse wipes submissions, sessions, and attempts, and resets voucher usage; vouchers and teacher credentials are kept. A pre-migration backup is written to `db_backup/` automatically.
+
+---
+
 ## v3 test bank migration — reset submission data (one-time)
 
 Paper I was expanded from 72 to **90 questions** in report version **3.0.0**. Old submissions use incompatible dimension keys and score ranges. After deploying v3, clear historical submissions **once** so teacher percentiles and score buckets are not mixed:

@@ -1,14 +1,20 @@
 import { useRef, useState } from 'react';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
-import { ANSWER_KEY, PART_A, PART_B, PART_B_VOCAB_I, PART_B_VOCAB_II } from '../data/questions';
+import { ANSWER_KEY, type Question } from '../data/questions';
+import { DIMENSIONS } from '../data/dimensions';
 import { useLocale } from '../i18n/LocaleContext';
+import { downloadServerReportPdf } from '../lib/api';
 import { downloadReportPdf } from '../lib/pdf';
 import { formatDate } from '../lib/format';
 import { levelBadgeClass, scoreBarColor } from '../lib/scoring';
-import type { ReportResult } from '../types';
+import type { ReportResult, Session } from '../types';
 
 type Filter = 'all' | 'incorrect' | 'unanswered';
+
+const QID_TO_DIMENSION_NAME = new Map<string, string>(
+  DIMENSIONS.flatMap((dimension) => dimension.qids.map((qid) => [qid, dimension.name] as [string, string])),
+);
 
 function formatCohortRankDisplay(
   rank: number | null | undefined,
@@ -21,26 +27,20 @@ function formatCohortRankDisplay(
   return `${rank} ${ofLabel} ${size}`;
 }
 
-function ReviewSection({
-  title,
-  questions,
-  result,
-}: {
-  title: string;
-  questions: Array<(typeof PART_A)[number]>;
-  result: ReportResult;
-}) {
+type ReviewRow = { q: Question; seq: number; label: string };
+
+function ReviewList({ title, rows, result }: { title: string; rows: ReviewRow[]; result: ReportResult }) {
   const { t } = useLocale();
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
       <div className="border-b border-slate-100 px-5 py-4">
         <span className="text-sm font-bold text-slate-700">
-          {title} <span className="text-xs font-normal text-slate-400">({questions.length})</span>
+          {title} <span className="text-xs font-normal text-slate-400">({rows.length})</span>
         </span>
       </div>
       <div className="divide-y divide-slate-50">
-        {questions.map((q) => {
+        {rows.map(({ q, seq, label }) => {
           const userAnswer = result.answers[q.id];
           const correct = ANSWER_KEY[q.id];
           const ok = userAnswer === correct;
@@ -49,10 +49,13 @@ function ReviewSection({
 
           return (
             <div key={q.id} className="px-5 py-4">
-              <p className="mb-2 text-sm leading-relaxed text-slate-700">
-                <span className="mr-1.5 text-xs font-bold text-slate-400">Q{q.canonicalNumber}</span>
-                {q.text}
-              </p>
+              <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">Q{seq}</span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500">
+                  {label}
+                </span>
+              </div>
+              <p className="mb-2 text-sm leading-relaxed text-slate-700">{q.text}</p>
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className={`rounded-full px-2.5 py-1 font-medium ${!userAnswer ? 'bg-slate-100 text-slate-500' : ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                   {t.report.yourAnswer}: {userOpt ? `(${userOpt.k}) ${userOpt.t}` : t.report.notAnswered}
@@ -71,7 +74,15 @@ function ReviewSection({
   );
 }
 
-export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome: () => void }) {
+export function ResultsScreen({
+  result,
+  session,
+  onHome,
+}: {
+  result: ReportResult;
+  session: Session;
+  onHome: () => void;
+}) {
   const { t, language } = useLocale();
   const [filter, setFilter] = useState<Filter>('all');
   const [isExporting, setIsExporting] = useState(false);
@@ -79,7 +90,6 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
   const duration = `${Math.floor(result.durationSec / 60)}m ${result.durationSec % 60}s`;
   const dateLocale = language === 'zh-HK' ? 'zh-HK' : 'en-GB';
 
-  const allQuestions = [...PART_A, ...PART_B];
   const filterQuestion = (qid: string) => {
     const userAnswer = result.answers[qid];
     const correct = ANSWER_KEY[qid];
@@ -87,14 +97,33 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
     if (filter === 'unanswered') return !userAnswer;
     return true;
   };
-  const aQuestions = PART_A.filter((q) => filterQuestion(q.id));
-  const bVocabIQuestions = PART_B_VOCAB_I.filter((q) => filterQuestion(q.id));
-  const bVocabIIQuestions = PART_B_VOCAB_II.filter((q) => filterQuestion(q.id));
+  // Review in the exact sequence the candidate saw (shuffled order), numbered by
+  // that sequence. Labels: Part A = grammar dimension name; Part B = vocab band.
+  const questionLabel = (q: Question) =>
+    q.part === 'A'
+      ? QID_TO_DIMENSION_NAME.get(q.id) ?? t.report.appliedGrammar
+      : q.canonicalNumber <= 75
+        ? t.report.vocabCollocations
+        : t.report.vocabSpecialized;
+  const reviewRows: ReviewRow[] = result.questions
+    .map((q, index) => ({ q, seq: index + 1, label: questionLabel(q) }))
+    .filter(({ q }) => filterQuestion(q.id));
 
   const exportPdf = async () => {
-    if (!reportRef.current) return;
     setIsExporting(true);
     try {
+      const attemptId = result.backendData?.attemptId;
+      if (attemptId && !result.backendError) {
+        const voucher = session.voucherCode ?? 'unknown';
+        await downloadServerReportPdf(
+          attemptId,
+          language,
+          session.sessionToken,
+          `EDT-Report_${voucher}_01_${attemptId}.pdf`,
+        );
+        return;
+      }
+      if (!reportRef.current) return;
       await document.fonts.ready;
       await downloadReportPdf(reportRef.current, `EDT-Report-${result.candidateInfo.id || 'candidate'}.pdf`);
     } catch (error) {
@@ -235,7 +264,14 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
             <div className="overflow-visible p-6 pb-2">
               <p className="mb-2 text-center text-xs font-semibold uppercase tracking-widest text-slate-400">{t.report.dimensionsTitle}</p>
               <div className="report-radar-export mx-auto w-1/2 max-w-[50%] overflow-visible">
-                <RadarChart dimensions={result.dimensions} />
+                <RadarChart
+                  axes={result.dimensions.map((dimension) => ({
+                    id: dimension.id,
+                    short: dimension.short,
+                    score: dimension.score,
+                    max: 5,
+                  }))}
+                />
               </div>
             </div>
             <div className="divide-y divide-slate-100">
@@ -304,20 +340,11 @@ export function ResultsScreen({ result, onHome }: { result: ReportResult; onHome
               ))}
             </div>
           </div>
-          {aQuestions.length > 0 ? <ReviewSection title={t.report.appliedGrammar} questions={aQuestions} result={result} /> : null}
-          {bVocabIQuestions.length > 0 ? (
-            <div className="mt-4">
-              <ReviewSection title={`${t.report.vocabulary} — ${t.report.vocabCollocations}`} questions={bVocabIQuestions} result={result} />
-            </div>
-          ) : null}
-          {bVocabIIQuestions.length > 0 ? (
-            <div className="mt-4">
-              <ReviewSection title={`${t.report.vocabulary} — ${t.report.vocabSpecialized}`} questions={bVocabIIQuestions} result={result} />
-            </div>
-          ) : null}
-          {allQuestions.filter((q) => filterQuestion(q.id)).length === 0 ? (
+          {reviewRows.length > 0 ? (
+            <ReviewList title={t.report.questionReview} rows={reviewRows} result={result} />
+          ) : (
             <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-400">{t.report.noQuestions}</div>
-          ) : null}
+          )}
         </section>
 
         <div className="pb-4 pt-8 text-center no-print">

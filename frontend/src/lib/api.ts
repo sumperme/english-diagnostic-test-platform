@@ -4,11 +4,14 @@ import type {
   AdminTeacherCredentialList,
   AdminVoucher,
   AdminVoucherList,
+  AttemptInstance,
+  AttemptReportPayload,
   BackendData,
   ReportResult,
   Session,
   TeacherDashboardData,
   TeacherSession,
+  TestAvailability,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -107,6 +110,16 @@ export async function verifyVoucher(code: string): Promise<Session> {
   );
 }
 
+/** Fresh per-test remaining uses for the active session (voucher-scoped). */
+export async function fetchTestAvailability(sessionToken: string): Promise<TestAvailability[]> {
+  const data = await parseJson<{ tests: TestAvailability[] }>(
+    await fetch(`${API_BASE}/api/session/tests`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    }),
+  );
+  return data.tests;
+}
+
 export async function submitReport(result: ReportResult, sessionToken: string): Promise<BackendData> {
   return parseJson<BackendData>(
     await fetch(`${API_BASE}/api/submit`, {
@@ -118,6 +131,109 @@ export async function submitReport(result: ReportResult, sessionToken: string): 
       body: JSON.stringify(result),
     }),
   );
+}
+
+// --- Attempts API (DB-backed tests, e.g. Paper II) ---
+
+function bearerHeaders(sessionToken: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${sessionToken}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+export async function startAttempt(
+  testCode: string,
+  candidateInfo: { name: string; id: string },
+  sessionToken: string,
+): Promise<AttemptInstance> {
+  return parseJson<AttemptInstance>(
+    await fetch(`${API_BASE}/api/attempts`, {
+      method: 'POST',
+      headers: bearerHeaders(sessionToken),
+      body: JSON.stringify({ testCode, candidateInfo }),
+    }),
+  );
+}
+
+export async function saveAttemptAnswer(
+  attemptId: string,
+  questionCode: string,
+  selectedOption: string | null,
+  sessionToken: string,
+): Promise<void> {
+  await parseJson<{ ok: boolean }>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/answers`, {
+      method: 'POST',
+      headers: bearerHeaders(sessionToken),
+      body: JSON.stringify({ questionCode, selectedOption }),
+    }),
+  );
+}
+
+export async function submitAttempt(
+  attemptId: string,
+  candidateInfo: { name: string; id: string },
+  autoSubmitted: boolean,
+  sessionToken: string,
+): Promise<AttemptReportPayload> {
+  return parseJson<AttemptReportPayload>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/submit`, {
+      method: 'POST',
+      headers: bearerHeaders(sessionToken),
+      body: JSON.stringify({ candidateInfo, autoSubmitted }),
+    }),
+  );
+}
+
+export async function fetchAttemptReport(attemptId: string, sessionToken: string): Promise<AttemptReportPayload> {
+  return parseJson<AttemptReportPayload>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/report`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    }),
+  );
+}
+
+/**
+ * Audio elements cannot send Authorization headers, so protected clips are
+ * fetched as blobs with the session token and played from an object URL.
+ */
+export async function fetchAudioBlob(url: string, sessionToken: string): Promise<string> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) {
+    throw new ApiError('AUDIO_FETCH_FAILED', `Audio request failed (${response.status})`);
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+/** Server-rendered report PDF: fetch as blob with credentials, then trigger a download. */
+export async function downloadServerReportPdf(
+  attemptId: string,
+  lang: 'en' | 'zh-HK',
+  sessionToken: string,
+  fallbackFilename?: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf?lang=${encodeURIComponent(lang)}`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } },
+  );
+  if (!response.ok) {
+    throw new ApiError('PDF_DOWNLOAD_FAILED', `PDF request failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+  const filename = filenameMatch?.[1] ?? fallbackFilename ?? `EDT-Report_${attemptId}.pdf`;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 // --- Teacher API ---

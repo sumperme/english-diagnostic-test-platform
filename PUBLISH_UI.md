@@ -11,7 +11,7 @@ After you edit the frontend, run **one script**. It builds locally, commits, pus
 From the project root in PowerShell:
 
 ```powershell
-cd "c:\Users\aaron\Desktop\Project-for-Dr-Yeung\2-Kevin-English-Diagnostic-Test-Platform"
+cd "d:\Coding\Project-for-Dr-Yeung\2-Kevin-English-Diagnostic-Test-Platform"
 .\scripts\publish-ui.ps1
 ```
 
@@ -75,9 +75,13 @@ The script does **not** wait for Cloudflare. You do this once per publish:
 **Good deploy log** should include:
 
 ```text
-Read 5 files from the assets directory .../frontend/dist
-env.ASSETS    Assets
+Read N files from the assets directory .../frontend/dist
+env.DB (edt-diagnostic)      D1 Database
+env.R2_ASSETS (edt-assets)   R2 Bucket
+env.ASSETS                   Assets
 ```
+
+If `env.R2_ASSETS` is missing from the log, Paper II audio and PDF downloads will fail in production — check that the root `wrangler.toml` still contains the `[[r2_buckets]]` block.
 
 ### 4. If Cloudflare build fails
 
@@ -97,17 +101,45 @@ env.ASSETS    Assets
 - Confirm Cloudflare deployment **finished** (not still building)
 - Confirm you pushed to **`main`** (production branch)
 
-### 6. If you changed the database schema (D1 migrations)
+### 6. If you changed the database schema or test content (D1 migrations)
 
-UI publish does **not** apply D1 migrations automatically. After a migration is merged to `main`, run once:
+The question banks for **both papers live in D1** and ship as migrations (`0006`–`0008` created the unified schema + Test 1/Test 2 content; `0009`–`0010` added per-test voucher usage and activated Paper II). UI publish does **not** apply D1 migrations automatically. After a migration is merged to `main`, run once:
 
 ```powershell
+.\scripts\migrate-remote-db.ps1
+```
+
+That script backs up remote D1 to `db_backup/`, applies pending migrations, optionally cleanses candidate data (submissions/sessions/attempts — vouchers and teacher credentials are kept; add `-SkipCleanse` to keep results), and verifies the row counts.
+
+Manual equivalent (no backup, no cleanse):
+
+```powershell
+npx wrangler d1 export edt-diagnostic --remote --output db_backup/edt-diagnostic-<date>.sql
 npx wrangler d1 migrations apply edt-diagnostic --remote -c wrangler.toml
 ```
 
 For local preview, migrations run automatically via `local-preview.ps1`.
 
-### 7. Admin page (`/admin`)
+### 7. If you changed R2 assets (Paper II audio / PDF fonts)
+
+Production audio clips (21 MP3s: 20 listening tracks + the sound-check track `20260701_00_Testing_volume.mp3`) and the report-PDF fonts live in the `edt-assets` R2 bucket, not in git. After adding or replacing MP3s in `Client_Feedback/Audio Tracks/` (or changing fonts), upload once to remote R2:
+
+```powershell
+.\scripts\upload-assets.ps1
+```
+
+If your `npx wrangler login` lacks R2 API permission (error `A request to the Cloudflare API (/accounts/.../r2/buckets) failed`), create an R2-scoped API token in the Cloudflare dashboard and set it for the session only:
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN  = "<r2 api token>"
+$env:CLOUDFLARE_ACCOUNT_ID = "<account id>"
+.\scripts\upload-assets.ps1
+Remove-Item Env:CLOUDFLARE_API_TOKEN, Env:CLOUDFLARE_ACCOUNT_ID
+```
+
+Never commit tokens. Local preview seeds its own copy automatically.
+
+### 8. Admin page (`/admin`)
 
 Production admin: https://eng-diagnostic.tzy667.workers.dev/admin
 
@@ -119,15 +151,16 @@ Password is set in `wrangler.toml` as `ADMIN_PASSWORD` (default documented in de
 
 ## What the script never commits
 
-These stay local and are skipped by `publish-ui.ps1`:
+These stay local and are skipped by `publish-ui.ps1` (and/or `.gitignore`):
 
-- `Evouchers.txt`
-- `seed-vouchers.sql`
+- `Evouchers.txt`, `seed-vouchers.sql`
 - `scripts/local-preview.ps1` (local dev helper)
+- `db_backup/` (production D1 exports)
+- `.fonts-cache/` (downloaded PDF fonts)
 - `frontend/dist/` (built on Cloudflare during deploy)
-- `.dev.vars`, `.wrangler/`, `.cursor/`, `Client_Feedback/`
+- `.dev.vars`, `.wrangler/`, `worker/.wrangler/`, `.cursor/`, `Client_Feedback/` (incl. audio masters)
 
-These **can** be committed when changed: `PUBLISH_UI.md`, `scripts/publish-ui.ps1`, worker/frontend code, `migrations/`.
+These **can** be committed when changed: `PUBLISH_UI.md`, `scripts/publish-ui.ps1`, `scripts/upload-assets.ps1`, `scripts/migrate-remote-db.ps1`, the seed generators (`scripts/generate-test1-seed.mjs`, `scripts/generate-test2-seed.mjs`, `scripts/test2-content.mjs`), worker/frontend code, `migrations/`, and the docs (`README.md`, `DATABASE_README.md`, `TEST_BANK_GUIDE.md`, `AGENTS.md`).
 
 ---
 
@@ -147,13 +180,15 @@ npm run preview:local
 
 The script will:
 
-1. Apply local D1 migrations
-2. Seed vouchers from `Evouchers.txt` into the **local** database
-3. Start `npm run worker:dev` (Terminal 1)
-4. Start `npm run dev` (Terminal 2)
-5. Open http://localhost:5173
+1. Apply local D1 migrations — this includes the **full question banks for Paper I and Paper II** (unified schema, attempts tables, `voucher_test_usage`), so a fresh machine gets a complete test platform
+2. Seed vouchers from `Evouchers.txt` (or `TEST-LOCAL-001` if absent) and a teacher credential into the **local** database
+3. Reset voucher usage and wipe local attempts/reports/sessions, so every voucher can sit **both papers** again (3 attempts per paper per run)
+4. Check the **local R2 simulation** and, if missing, seed the 20 Paper II listening MP3s and the report-PDF fonts (first run downloads the fonts once into `.fonts-cache/`)
+5. Start `npm run worker:dev` (Terminal 1)
+6. Start `npm run dev` (Terminal 2)
+7. Open http://localhost:5173
 
-Use any code from `Evouchers.txt` (e.g. `4K2M-9R7T-1F5P`). Vite proxies `/api/*` to `http://127.0.0.1:8787`.
+Use any code from `Evouchers.txt` (e.g. `4K2M-9R7T-1F5P`), then on the info screen pick **Paper I** (grammar & vocabulary, classic flow) or **Paper II** (listening & reading — once-only audio playback, reading passages, server-side scoring, and the **Download PDF** button rendered by the local Worker). Vite proxies `/api/*` — including audio streaming and the PDF download — to `http://127.0.0.1:8787`.
 
 Admin UI locally: http://localhost:5173/admin (same `ADMIN_PASSWORD` as production).
 
@@ -161,7 +196,11 @@ Options:
 
 | Command | When to use |
 |---------|-------------|
-| `.\scripts\local-preview.ps1 -SkipSeed` | DB already seeded; just restart servers |
+| `.\scripts\local-preview.ps1 -SkipSeed` | Keep existing local data (incl. attempts); just restart servers |
+| `.\scripts\local-preview.ps1 -SkipAssets` | Skip the R2 asset check (fastest, if audio/PDF not needed) |
+| `.\scripts\local-preview.ps1 -ReseedAssets` | Force re-upload of audio + fonts to local R2 |
+
+Note: the local Worker uses `worker/wrangler.toml`, which declares the same `DB` and `R2_ASSETS` bindings as production but stores everything under `worker/.wrangler/state` — completely separate from Cloudflare.
 
 ---
 

@@ -1,8 +1,13 @@
 import { computePercentileStats, handleAdminRequest } from './admin';
+import { handleAssetRequest } from './assets';
+import { handleAttemptRequest } from './attempts';
+import { handleReportRequest } from './reports';
+import { dualWriteTest1Attempt, type Test1SubmissionPayload } from './test1DualWrite';
 
 type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
+  R2_ASSETS: R2Bucket;
   ALLOWED_ORIGIN?: string;
   SESSION_TTL_SECONDS?: string;
   ADMIN_PASSWORD?: string;
@@ -16,27 +21,12 @@ type TeacherVerifyRequest = {
   key?: string;
 };
 
-type SubmissionPayload = {
-  scores?: {
-    total?: {
-      correct?: number;
-    };
-  };
+type SubmissionPayload = Test1SubmissionPayload & {
   dimensions?: Array<{ key: string; score: number }>;
   reportSnapshot?: {
     questionCorrectness?: Record<string, 0 | 1>;
     weakDimensions?: string[];
     recommendation?: string;
-  };
-  candidateInfo?: {
-    name?: string;
-    id?: string;
-    testDate?: number;
-  };
-  submittedAt?: number;
-  cefrBand?: {
-    cefr?: string;
-    label?: string;
   };
 };
 
@@ -117,9 +107,10 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
   }
 
   const usesAllowed = Number(voucher.uses_allowed ?? 1);
-  const useCount = Number(voucher.use_count ?? 0);
 
-  if (useCount >= usesAllowed) {
+  const tests = await getTestAvailability(env.DB, code, usesAllowed);
+
+  if (tests.length > 0 && tests.every((test) => test.remainingUses <= 0)) {
     return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
   }
 
@@ -128,23 +119,11 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
   const ttl = Number(env.SESSION_TTL_SECONDS ?? 7200) * 1000;
   const expiresAt = now + ttl;
 
-  if (usesAllowed === 1) {
-    const update = await env.DB.prepare(
-      'UPDATE vouchers SET used_at = ?, used_by_session = ?, use_count = 1 WHERE code = ? AND use_count = 0',
-    )
-      .bind(now, sessionToken, code)
-      .run();
-
-    if (!update.success || update.meta.changes !== 1) {
-      return json({ error: 'ALREADY_USED' }, { status: 401 }, origin);
-    }
-  } else {
-    await env.DB.prepare(
-      'UPDATE vouchers SET used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ?',
-    )
-      .bind(now, sessionToken, code)
-      .run();
-  }
+  await env.DB.prepare(
+    'UPDATE vouchers SET used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ?',
+  )
+    .bind(now, sessionToken, code)
+    .run();
 
   await env.DB.prepare('INSERT INTO sessions (token, voucher_code, created_at, expires_at) VALUES (?, ?, ?, ?)')
     .bind(sessionToken, code, now, expiresAt)
@@ -152,10 +131,78 @@ async function verifyVoucher(request: Request, env: Env, origin?: string) {
 
   const userGroup = voucher.user_group?.trim() || DEFAULT_USER_GROUP;
 
-  return json({ sessionToken, expiresAt, voucherCode: code, userGroup }, undefined, origin);
+  return json({ sessionToken, expiresAt, voucherCode: code, userGroup, tests }, undefined, origin);
 }
 
-async function getSession(request: Request, env: Env) {
+/**
+ * Per-test remaining uses for a voucher: uses_allowed applies to EACH active
+ * test separately. Usage is consumed at submit time, not at login.
+ */
+async function getTestAvailability(db: D1Database, voucherCode: string, usesAllowed: number) {
+  const testsResult = await db
+    .prepare(
+      `SELECT t.test_code AS testCode, t.name, COALESCE(vtu.use_count, 0) AS used
+       FROM tests t
+       LEFT JOIN voucher_test_usage vtu ON vtu.voucher_code = ? AND vtu.test_id = t.id
+       WHERE t.status = 'active'
+       ORDER BY t.test_code`,
+    )
+    .bind(voucherCode)
+    .all<{ testCode: string; name: string; used: number }>();
+
+  return (testsResult.results ?? []).map((row) => ({
+    testCode: row.testCode,
+    name: row.name,
+    remainingUses: Math.max(0, usesAllowed - Number(row.used ?? 0)),
+  }));
+}
+
+/** Fresh per-test availability for the active session (InfoScreen refresh). */
+async function sessionTests(request: Request, env: Env, origin?: string) {
+  const session = await getSession(request, env);
+  if (!session) return unauthorized(origin);
+
+  const usesAllowed = Number(session.uses_allowed ?? 1);
+  const tests = await getTestAvailability(env.DB, session.voucher_code, usesAllowed);
+  return json({ tests }, undefined, origin);
+}
+
+/**
+ * Consume one voucher use for a specific test. Returns false when the per-test
+ * limit is already reached. vouchers.use_count keeps the cross-test total.
+ */
+export async function consumeVoucherUse(
+  db: D1Database,
+  voucherCode: string,
+  testId: number,
+  usesAllowed: number,
+  sessionToken: string,
+): Promise<boolean> {
+  const now = Date.now();
+  await db
+    .prepare('INSERT OR IGNORE INTO voucher_test_usage (voucher_code, test_id, use_count) VALUES (?, ?, 0)')
+    .bind(voucherCode, testId)
+    .run();
+
+  const update = await db
+    .prepare(
+      'UPDATE voucher_test_usage SET use_count = use_count + 1 WHERE voucher_code = ? AND test_id = ? AND use_count < ?',
+    )
+    .bind(voucherCode, testId, usesAllowed)
+    .run();
+
+  if (!update.success || update.meta.changes !== 1) return false;
+
+  await db
+    .prepare(
+      'UPDATE vouchers SET use_count = use_count + 1, used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ?',
+    )
+    .bind(now, sessionToken, voucherCode)
+    .run();
+  return true;
+}
+
+export async function getSession(request: Request, env: { DB: D1Database }) {
   const auth = request.headers.get('Authorization') ?? '';
   const match = auth.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
@@ -213,27 +260,18 @@ async function submit(request: Request, env: Env, origin?: string) {
 
   const usesAllowed = Number(session.uses_allowed ?? 1);
 
-  if (usesAllowed > 1) {
-    const results = await env.DB.batch([
-      env.DB.prepare(
-        'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      ).bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson),
-      env.DB.prepare(
-        'UPDATE vouchers SET use_count = use_count + 1, used_at = COALESCE(used_at, ?), used_by_session = ? WHERE code = ? AND use_count < uses_allowed',
-      ).bind(now, session.token, session.voucher_code),
-    ]);
-
-    const updateResult = results[1];
-    if (!updateResult.success || updateResult.meta.changes !== 1) {
-      return json({ error: 'Voucher submission limit reached' }, { status: 409 }, origin);
-    }
-  } else {
-    await env.DB.prepare(
-      'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-      .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson)
-      .run();
+  // Legacy Test 1 flow: consume one (voucher, Test 1) use before storing.
+  const TEST1_ID = 1;
+  const consumed = await consumeVoucherUse(env.DB, session.voucher_code, TEST1_ID, usesAllowed, session.token);
+  if (!consumed) {
+    return json({ error: 'Voucher submission limit reached' }, { status: 409 }, origin);
   }
+
+  await env.DB.prepare(
+    'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  )
+    .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson)
+    .run();
 
   const allStats = await env.DB.prepare(
     'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score > ? THEN 1 ELSE 0 END) as strictlyAbove FROM submissions',
@@ -250,9 +288,25 @@ async function submit(request: Request, env: Env, origin?: string) {
   const all = computePercentileStats(allStats);
   const group = computePercentileStats(groupStats);
 
+  let attemptId: string | null = null;
+  try {
+    attemptId = await dualWriteTest1Attempt(env, {
+      sessionToken: session.token,
+      voucherCode: session.voucher_code,
+      userGroup,
+      payload,
+      totalScore,
+      cohortAll: all,
+      cohortGroup: group,
+    });
+  } catch (error) {
+    console.error('Test 1 dual-write failed:', error);
+  }
+
   return json(
     {
       submissionId,
+      attemptId,
       userGroup,
       percentileRank: all.percentileRank,
       cohortRank: all.cohortRank,
@@ -522,20 +576,41 @@ export default {
         return adminResponse;
       }
 
+      const assetResponse = await handleAssetRequest(request, env, origin, json);
+      if (assetResponse) {
+        return assetResponse;
+      }
+
+      const attemptResponse = await handleAttemptRequest(request, env, origin, json);
+      if (attemptResponse) {
+        return attemptResponse;
+      }
+
+      const reportResponse = await handleReportRequest(request, env, origin, json);
+      if (reportResponse) {
+        return reportResponse;
+      }
+
+      // Awaited so handler rejections (e.g. malformed JSON bodies) are caught
+      // below and become JSON 500s instead of unhandled Worker exceptions.
       if (url.pathname === '/api/verify-voucher' && request.method === 'POST') {
-        return verifyVoucher(request, env, origin);
+        return await verifyVoucher(request, env, origin);
       }
 
       if (url.pathname === '/api/submit' && request.method === 'POST') {
-        return submit(request, env, origin);
+        return await submit(request, env, origin);
+      }
+
+      if (url.pathname === '/api/session/tests' && request.method === 'GET') {
+        return await sessionTests(request, env, origin);
       }
 
       if (url.pathname === '/api/teacher/verify' && request.method === 'POST') {
-        return teacherVerify(request, env, origin);
+        return await teacherVerify(request, env, origin);
       }
 
       if (url.pathname === '/api/teacher/dashboard' && request.method === 'GET') {
-        return teacherDashboard(request, env, origin);
+        return await teacherDashboard(request, env, origin);
       }
 
       return json({ error: 'Not found' }, { status: 404 }, origin);

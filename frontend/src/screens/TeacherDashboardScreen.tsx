@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clearTeacherSession, fetchTeacherDashboard } from '../lib/api';
+import { explainedQuestionId } from '../lib/explainedQuestionId';
 import type { TeacherDashboardData, TeacherQuestionStat, TeacherSession, TeacherSubmissionRow } from '../types';
 
 type SortDir = 'asc' | 'desc';
@@ -341,7 +342,7 @@ export function TeacherDashboardScreen({
                   <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="px-3 py-2">Q#</th>
-                      <th className="px-3 py-2">Question ID</th>
+                      <th className="min-w-[280px] px-3 py-2">Question ID</th>
                       <th className="px-3 py-2">Part</th>
                       <th className="px-3 py-2">Responses</th>
                       <th className="px-3 py-2 w-48">Correct Rate</th>
@@ -352,7 +353,9 @@ export function TeacherDashboardScreen({
                     {sortedQuestions.map((q, idx) => (
                       <tr key={q.qid} className="border-b border-slate-100 align-middle hover:bg-slate-50">
                         <td className="px-3 py-2 text-xs text-slate-400">{idx + 1}</td>
-                        <td className="px-3 py-2 font-mono text-xs font-semibold">{q.qid}</td>
+                        <td className="max-w-xs px-3 py-2 font-mono text-[11px] font-semibold leading-relaxed break-all">
+                          {explainedQuestionId(q.qid, q.canonicalNumber, q.part)}
+                        </td>
                         <td className="px-3 py-2 text-xs">Part {q.part}</td>
                         <td className="px-3 py-2 text-xs text-slate-500">{q.totalResponses}</td>
                         <td className="px-3 py-2">

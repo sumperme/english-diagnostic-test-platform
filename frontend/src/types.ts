@@ -13,6 +13,14 @@ export type CandidateInfo = {
   testDate: number;
   mode: string;
   userGroup: string;
+  /** '01' = Paper I (legacy flow), '02' = Paper II. Absent means Paper I. */
+  testCode?: string;
+};
+
+export type TestAvailability = {
+  testCode: string;
+  name: string;
+  remainingUses: number;
 };
 
 export type Session = {
@@ -20,6 +28,7 @@ export type Session = {
   expiresAt: number;
   voucherCode?: string;
   userGroup: string;
+  tests?: TestAvailability[];
 };
 
 export type DimensionScore = {
@@ -36,6 +45,7 @@ export type DimensionScore = {
 
 export type BackendData = {
   submissionId: string;
+  attemptId?: string | null;
   userGroup: string;
   percentileRank: number | null;
   cohortRank: number | null;
@@ -76,11 +86,113 @@ export type ReportResult = {
   backendError?: boolean;
 };
 
+// --- Attempts API (DB-backed tests, e.g. Paper II) ---
+
+export type AttemptOptions = { A: string; B: string; C: string; D: string };
+
+export type AttemptResource =
+  | { type: 'audio'; resourceId: number; url: string; title: string | null }
+  | { type: 'text'; resourceId: number; title: string | null; content: string };
+
+export type AttemptItem = {
+  questionCode: string;
+  partCode: string;
+  canonicalNumber: number;
+  prompt: string;
+  options: AttemptOptions;
+  resourceId: number | null;
+};
+
+export type AttemptInstance = {
+  attemptId: string;
+  testCode: string;
+  testName: string;
+  timeLimitSeconds: number;
+  items: AttemptItem[];
+  resources: Record<number, AttemptResource>;
+};
+
+export type BandRef = {
+  bandKey: string;
+  cefrLabel: string;
+  ielts: string | null;
+  toefl: string | null;
+};
+
+export type ReportLevelKey = 'needsWork' | 'developing' | 'good' | 'strong' | 'excellent';
+
+/** Mirror of the Worker's rv1 report variables (worker/src/reportVariables.ts). */
+export type ReportVariables = {
+  testCode: string;
+  candidate: {
+    name: string;
+    ref: string;
+    userGroup: string;
+    educationLevel: string | null;
+  };
+  attempt: {
+    attemptId: string;
+    startTime: number;
+    endTime: number;
+    durationSec: number;
+    autoSubmitted: boolean;
+  };
+  scores: {
+    overall: { correct: number; total: number };
+    parts: Array<{ partCode: string; skill: string; correct: number; total: number }>;
+  };
+  dimensions: Array<{
+    key: string;
+    dimensionCode: string;
+    partCode: string;
+    score: number;
+    max: number;
+    levelKey: ReportLevelKey;
+  }>;
+  bands: {
+    overall: BandRef | null;
+    parts: Array<BandRef & { partCode: string }>;
+  };
+  weakDimensionKeys: string[];
+  cohort: {
+    percentileRank: number | null;
+    cohortRank: number | null;
+    cohortSize: number;
+    cohortMean: number | null;
+    groupPercentileRank: number | null;
+    groupCohortRank: number | null;
+    groupCohortSize: number;
+    groupCohortMean: number | null;
+  } | null;
+};
+
+export type AttemptReviewRow = {
+  questionCode: string;
+  partCode: string;
+  canonicalNumber: number;
+  prompt: string;
+  options: AttemptOptions;
+  correctAnswer: string;
+  selectedOption: string | null;
+  isCorrect: number | null;
+};
+
+export type AttemptReportPayload = {
+  variables: ReportVariables | null;
+  review: AttemptReviewRow[];
+};
+
+export type Test2Result = AttemptReportPayload & { attemptId: string };
+
 export type AdminSummary = {
   total: number;
   used: number;
   available: number;
   assigned: number;
+  usedTest1: number;
+  usedTest2: number;
+  submissionsTest1: number;
+  submissionsTest2: number;
 };
 
 export type AdminVoucher = {
@@ -89,6 +201,8 @@ export type AdminVoucher = {
   usedAt: number | null;
   usesAllowed: number;
   useCount: number;
+  useCountTest1: number;
+  useCountTest2: number;
   userGroup: string;
   educationLevel: string | null;
   remark: string | null;
@@ -158,6 +272,8 @@ export type AdminTeacherCredential = {
   voucherCount: number;
   totalUseCount: number;
   totalUsesAllowed: number;
+  totalUseCountTest1: number;
+  totalUseCountTest2: number;
 };
 
 export type AdminTeacherCredentialList = {

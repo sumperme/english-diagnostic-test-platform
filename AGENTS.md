@@ -19,13 +19,16 @@ Do not infer design from the legacy `index.html` Inter/sky theme for marketing p
 
 ## Test Bank and Scoring
 
-Before adding, removing, or remapping MCQs, read [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md).
+Before adding, removing, or remapping MCQs, read [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md) and [`DATABASE_README.md`](DATABASE_README.md).
 
-- Question content lives in `frontend/src/data/` (`questions.ts`, `dimensions.ts`, `cefr.ts`). Cloudflare D1 stores submission results only — not the test bank.
-- Current model: **90 MCQs** (60 Part A grammar + 30 Part B vocabulary), **12 Part A grammar dimensions × 5 MCQs**, **all Part B overall-only** for the radar chart. See [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md).
-- Always score by stable question ID (`A1`, `B13`, …), never by shuffled display index (see Forbidden Patterns).
-- After changing dimensions or question counts, sync duplicated worker metadata in `worker/src/index.ts` (`DIMENSION_KEYS`, `SCORE_BUCKETS`, `ALL_QIDS_ORDERED`).
-- Do not hardcode new totals in UI without updating CEFR bands (`cefr.ts`), worker score buckets, and both EN / zh-HK i18n strings.
+- **The question bank lives in Cloudflare D1** (unified multi-test schema, migration `0006_unified_test_bank.sql`): `tests` → `test_parts` → `dimensions` / `shared_resources` → `question_groups` → `questions` (variants). Content ships as seed migrations (`0007_seed_test1.sql`, `0008_seed_test2.sql`).
+- Every variant has a unique **question code `TT-PP-SS-GGG-QQ`** (test-part-dimension-group-variant, e.g. `01-01-01-007-01`). Codes are immutable once attempts exist.
+- **Randomization engine:** each exam slot is a question group holding up to 10 variants; the Worker serves exactly one random variant per group per attempt, records the served configuration in `test_attempt_answers`, and scores server-side. Currently 1 variant per group (`QQ='01'`).
+- Current tests: **Test 1** (`01`, active) — 90 groups: 60 Part A grammar (12 dimensions × 5) + 30 Part B vocabulary, overall CEFR grid 0–90. **Test 2** (`02`, active) — 45 groups: 20 Part A listening (R2 audio, once-only playback) + 25 Part B reading (6 shared passages), B2 / C1-C2 difficulty dimensions, per-part conversion grids (/20 and /25).
+- Always score by stable `question_code` / group identity, never by shuffled display index (see Forbidden Patterns).
+- **Test 2 runs on the attempts API** (`worker/src/attempts.ts`): random variant per group, served config in `test_attempt_answers`, server-side scoring, `attempt_reports` variables. Candidates pick their paper on the info screen; voucher usage is tracked **per test** in `voucher_test_usage` (`uses_allowed` applies to each paper separately, consumed at submit).
+- **Transition:** the live Test 1 quiz flow still reads `frontend/src/data/` and scores client-side into `submissions` until Test 1 moves to the attempts API. Until then, Test 1 content changes must be mirrored in both `frontend/src/data/` (+ worker constants `DIMENSION_KEYS`, `SCORE_BUCKETS`, `ALL_QIDS_ORDERED`) and a D1 migration.
+- Conversion grids are data (`score_conversion_bands`); do not hardcode totals or bands in UI without updating the bands, the worker score buckets, and both EN / zh-HK i18n strings.
 
 ## Design Tokens
 
@@ -184,13 +187,22 @@ export function AssessmentCard({ children }: { children: React.ReactNode }) {
 ## Report Rules
 
 - Results pages may use light report cards for readability, but the header and export frame should reference the EDT palette.
-- Dimension scoring layout, overall-only questions, and CEFR breakpoints are defined in [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md). Current values: 12 Part A grammar dimensions, max raw score 5 per dimension, 90 total MCQs.
-- All report labels, narratives, buttons, and chart labels must read from the i18n dictionaries.
+- Dimension scoring layout, overall-only questions, and CEFR breakpoints are defined in [`TEST_BANK_GUIDE.md`](TEST_BANK_GUIDE.md). Current values: 12 Part A grammar dimensions, max raw score 5 per dimension, 90 total MCQs (Test 1); per-part CEFR bands for Test 2.
+- Feedback is stored as **layout-free variables** in `attempt_reports.variables` (schema `rv1`, `worker/src/reportVariables.ts`): scores, level keys, band keys — never HTML, layout, or locale-rendered text.
+- The report renders twice from the same variables: HTML in the frontend (student/teacher view, i18n at render time) and **PDF server-side** (`GET /api/reports/:attemptId/pdf`, pdf-lib in `worker/src/reports.ts`, EDT-branded, Montserrat + Noto Serif TC from R2, latest 20 PDFs cached in R2 with FIFO eviction via `pdf_cache_index`).
+- Report re-access credentials: attempt ID + original voucher code (student), owning session token, or teacher key scoped by `user_group`.
+- All report labels, narratives, buttons, and chart labels must read from the i18n dictionaries — frontend `messages.ts` **and** `worker/src/reportI18n.ts` (EN + zh-HK, keyed by `levelKey` / `band_key`).
 
 ## Forbidden Patterns
 
 - Do not introduce a new brand palette.
 - Do not use the legacy Google Apps Script URL.
 - Do not hardcode the old `PASSCODE` flow.
-- Do not score shuffled questions by display index; always score by stable question ID.
+- Do not score shuffled questions by display index; always score by stable `question_code` / question group identity.
+- Do not hardcode variant selection; the engine picks one random variant per group at attempt start and records it in `test_attempt_answers`.
+- Do not rename `dimensions.key` or `score_conversion_bands.band_key` values — stored history and narrative i18n key off them.
+- Do not renumber or delete question codes/variants that have been served in any attempt.
+- Do not edit applied D1 migrations; ship content changes as new migrations.
+- Do not store layout, HTML, or locale-rendered narrative text in `attempt_reports.variables`.
+- Do not expose R2 audio (or any test asset) via public URLs; serve only through the authenticated `/api/assets/...` route.
 - Do not put secrets, voucher batches, Cloudflare tokens, or database IDs in source files.

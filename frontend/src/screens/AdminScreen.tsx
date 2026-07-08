@@ -90,21 +90,32 @@ function isDraftChanged(draft: VoucherDraft, voucher: AdminVoucher): boolean {
   );
 }
 
-function formatVoucherStatus(voucher: AdminVoucher): string {
-  const useCount = voucher.useCount ?? 0;
-  const usesAllowed = voucher.usesAllowed ?? 1;
+function formatPerTestStatus(useCount: number, usesAllowed: number): string {
   if (useCount === 0) return 'Available';
-  if (usesAllowed === 1) return 'Used';
   if (useCount >= usesAllowed) return `Used ${usesAllowed}/${usesAllowed}`;
   return `Used ${useCount}/${usesAllowed}`;
 }
 
-function voucherStatusBadgeClass(voucher: AdminVoucher): string {
-  const useCount = voucher.useCount ?? 0;
-  const usesAllowed = voucher.usesAllowed ?? 1;
+function perTestStatusBadgeClass(useCount: number, usesAllowed: number): string {
   if (useCount === 0) return 'bg-emerald-100 text-emerald-700';
   if (usesAllowed > 1 && useCount < usesAllowed) return 'bg-amber-100 text-amber-800';
   return 'bg-rose-100 text-rose-700';
+}
+
+function RefreshButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {loading ? (
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-edt-forest" />
+      ) : null}
+      {loading ? 'Refreshing…' : 'Refresh'}
+    </button>
+  );
 }
 
 function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential): boolean {
@@ -398,18 +409,37 @@ export function AdminScreen() {
           <>
             {/* Summary cards */}
             {summary ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  ['Total vouchers', summary.total],
-                  ['Used', summary.used],
-                  ['Available', summary.available],
-                  ['Assigned to party', summary.assigned],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-                    <p className="mt-2 text-3xl font-extrabold text-edt-forest">{value}</p>
-                  </div>
-                ))}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Total vouchers</p>
+                  <p className="mt-2 text-3xl font-extrabold text-edt-forest">{summary.total}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Used (per test)</p>
+                  <p className="mt-2 text-sm font-semibold text-edt-forest">
+                    Test 1: <span className="text-2xl font-extrabold">{summary.usedTest1}</span>
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-edt-forest">
+                    Test 2: <span className="text-2xl font-extrabold">{summary.usedTest2}</span>
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Submissions</p>
+                  <p className="mt-2 text-sm font-semibold text-edt-forest">
+                    Test 1: <span className="text-2xl font-extrabold">{summary.submissionsTest1}</span>
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-edt-forest">
+                    Test 2: <span className="text-2xl font-extrabold">{summary.submissionsTest2}</span>
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Available</p>
+                  <p className="mt-2 text-3xl font-extrabold text-edt-forest">{summary.available}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Assigned to party</p>
+                  <p className="mt-2 text-3xl font-extrabold text-edt-forest">{summary.assigned}</p>
+                </div>
               </div>
             ) : null}
 
@@ -479,14 +509,7 @@ export function AdminScreen() {
                     <option value="available">Available</option>
                     <option value="used">Used</option>
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => void loadVoucherData()}
-                    disabled={loading}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold"
-                  >
-                    Refresh
-                  </button>
+                  <RefreshButton loading={loading} onClick={() => void loadVoucherData()} />
                 </div>
               </div>
 
@@ -495,7 +518,8 @@ export function AdminScreen() {
                   <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="px-3 py-2">Code</th>
-                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Test 1</th>
+                      <th className="px-3 py-2">Test 2</th>
                       <th className="px-3 py-2">Uses allowed</th>
                       <th className="px-3 py-2">
                         <button
@@ -527,8 +551,17 @@ export function AdminScreen() {
                         <tr key={voucher.code} className="border-b border-slate-100 align-top">
                           <td className="px-3 py-3 font-mono text-xs">{voucher.code}</td>
                           <td className="px-3 py-3">
-                            <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${voucherStatusBadgeClass(voucher)}`}>
-                              {formatVoucherStatus(voucher)}
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${perTestStatusBadgeClass(voucher.useCountTest1 ?? 0, voucher.usesAllowed ?? 1)}`}
+                            >
+                              {formatPerTestStatus(voucher.useCountTest1 ?? 0, voucher.usesAllowed ?? 1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${perTestStatusBadgeClass(voucher.useCountTest2 ?? 0, voucher.usesAllowed ?? 1)}`}
+                            >
+                              {formatPerTestStatus(voucher.useCountTest2 ?? 0, voucher.usesAllowed ?? 1)}
                             </span>
                           </td>
                           <td className="px-3 py-3">
@@ -669,14 +702,7 @@ export function AdminScreen() {
                   <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Teacher Credential List</h2>
                   <p className="mt-1 text-xs text-slate-400">One teacher key maps to one user group. Keys and user groups are fixed after creation.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void loadTeacherData()}
-                  disabled={loading}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold"
-                >
-                  Refresh
-                </button>
+                <RefreshButton loading={loading} onClick={() => void loadTeacherData()} />
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
@@ -685,7 +711,8 @@ export function AdminScreen() {
                       <th className="px-3 py-2">Teacher's Voucher Key</th>
                       <th className="px-3 py-2">User Group</th>
                       <th className="px-3 py-2 text-right"># Vouchers</th>
-                      <th className="px-3 py-2 text-right">Used / Allowed</th>
+                      <th className="px-3 py-2 text-right">Test 1 Used / Allowed</th>
+                      <th className="px-3 py-2 text-right">Test 2 Used / Allowed</th>
                       <th className="px-3 py-2">Remark</th>
                       <th className="px-3 py-2" />
                     </tr>
@@ -693,7 +720,7 @@ export function AdminScreen() {
                   <tbody>
                     {credentials.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
+                        <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
                           No teacher credentials yet.
                         </td>
                       </tr>
@@ -712,7 +739,10 @@ export function AdminScreen() {
                           </td>
                           <td className="px-3 py-3 text-right text-xs font-semibold">{cred.voucherCount}</td>
                           <td className="px-3 py-3 text-right text-xs font-semibold">
-                            {cred.totalUseCount}/{cred.totalUsesAllowed}
+                            {cred.totalUseCountTest1}/{cred.totalUsesAllowed}
+                          </td>
+                          <td className="px-3 py-3 text-right text-xs font-semibold">
+                            {cred.totalUseCountTest2}/{cred.totalUsesAllowed}
                           </td>
                           <td className="px-3 py-3">
                             <input

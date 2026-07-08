@@ -6,9 +6,16 @@ frontend/tsconfig.tsbuildinfo
 *.local
 Evouchers.txt
 seed-vouchers.sql
+db_backup/
 scripts/*
 !scripts/publish-ui.ps1
 !scripts/local-preview.ps1
+!scripts/upload-assets.ps1
+!scripts/migrate-remote-db.ps1
+!scripts/generate-test1-seed.mjs
+!scripts/generate-test2-seed.mjs
+!scripts/test2-content.mjs
+.fonts-cache/
 .cursor/
 Client_Feedback/
 index.html

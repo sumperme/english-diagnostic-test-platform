@@ -203,7 +203,7 @@ export const messages = {
     },
     info: {
       title: 'Before You Begin',
-      subtitle: 'Please provide your information. These details will appear on your diagnostic report. The test has 90 questions (60 grammar + 30 vocabulary) and a 60-minute time limit.',
+      subtitle: 'Choose your paper, then enter your details for the report.',
       userGroup: 'Study group',
       name: 'Full Name',
       id: 'Student / Candidate ID',
@@ -270,8 +270,8 @@ export const messages = {
       basedOn: 'Based on submissions to date.',
       partBVocabI: 'Part B I',
       partBVocabII: 'Part B II',
-      vocabCollocations: 'Collocations & Idioms',
-      vocabSpecialized: 'Nuanced & Specialized',
+      vocabCollocations: 'Vocabulary (Common)',
+      vocabSpecialized: 'Vocabulary (Specialized Terms)',
       approxIelts: 'Approx. IELTS',
       approxToefl: 'Approx. TOEFL iBT',
       proficiencyDisclaimer:
@@ -308,6 +308,132 @@ export const messages = {
         strong: 'Strong',
         excellent: 'Excellent',
       },
+    },
+    test2: {
+      pickerTitle: 'Choose your paper',
+      pickerHint: 'Your voucher covers each paper separately.',
+      paperNames: {
+        '01': 'Paper I — Applied Grammar & Vocabulary',
+        '02': 'Paper II — Listening & Reading',
+      },
+      paperDescs: {
+        '01': '90 questions (60 grammar + 30 vocabulary) · 60 minutes',
+        '02': '45 questions (20 listening + 25 reading) · 60 minutes',
+      },
+      paperIntros: {
+        '01': {
+          summary:
+            'Gap-fill multiple-choice questions at text and sentence level, testing control of the language system across 12 grammar areas and CEFR C1/C2 vocabulary.',
+          details: [
+            'Part A: 60 applied grammar questions across 12 dimensions',
+            'Part B: 30 vocabulary questions (common and specialized)',
+            '60-minute timed assessment',
+          ],
+        },
+        '02': {
+          summary:
+            'Listening extracts (speeches, dialogues, discussions) and reading texts of various genres, assessing comprehension of key messages, tone, attitude, and text structure.',
+          details: [
+            'Part A: 20 listening questions — each recording plays once only',
+            'Part B: 25 reading questions with scrollable passages',
+            '60-minute timed assessment',
+          ],
+        },
+      },
+      passageRangeHeader: 'Questions {from} – {to} refer to the following paragraph',
+      remainingUses: 'attempts left',
+      noRemaining: 'No attempts left',
+      quizTitle: 'Paper II - Listening & Reading',
+      loading: 'Preparing your test…',
+      startError: 'The test could not be started. Please try again.',
+      noRemainingError: 'This voucher has no remaining attempts for this paper.',
+      submitError: 'Submission failed. Please check your connection and try again.',
+      retry: 'Try again',
+      instructionsIntro:
+        'Select the best answer. All questions carry equal marks. Part A is listening; Part B is reading.',
+      instructionsAudioLabel: 'Listening:',
+      instructionsAudio:
+        'Read the question first. When you are ready, press the play button. Each recording can be played ONLY ONCE.',
+      playAudio: 'Play Recording',
+      playOnceNote: 'You are allowed to listen to each recording ONLY ONCE.',
+      audioLoading: 'Loading audio…',
+      audioPlaying: 'Playing — listen carefully',
+      audioPlayed: 'Recording finished (one play only)',
+      audioError: 'Audio failed to load. Press to retry.',
+      audioCheckTitle: 'Sound Check',
+      audioCheckBody:
+        'This paper includes a listening section. Before you begin, click the button below to play a sample sound and adjust your device volume to a clear, comfortable level.',
+      audioCheckReplayNote: 'You may replay the sample sound as many times as you need.',
+      audioCheckOnceReminder:
+        'During the test, each recording is played ONCE only — please make sure your volume is set correctly before you begin.',
+      audioCheckTimerNote: 'The 60-minute timer starts only when you click Start Test.',
+      audioCheckPlay: 'Play Sample Sound',
+      audioCheckPlaying: 'Playing sample…',
+      audioCheckStart: 'Start Test',
+      passageLabel: 'Reading Passage',
+      passageScrollHint: 'Scroll inside the box to read the full passage.',
+      reportSubtitle: 'English Diagnostic Test - Paper II Listening & Reading',
+      partAListening: 'Listening',
+      partBReading: 'Reading',
+      overallBand: 'Overall CEFR Estimate',
+      partBands: 'Skill-Level CEFR Estimates',
+      partBandListening: 'Listening (Part A)',
+      partBandReading: 'Reading (Part B)',
+      difficultyTitle: 'Performance by Difficulty Band',
+      difficultyNote:
+        'Questions are tagged B2 or C1/C2 by design. Strong C1/C2 performance indicates readiness for demanding academic comprehension.',
+      dimensionLabels: {
+        listeningB2: 'Listening — B2 items',
+        listeningC1C2: 'Listening — C1/C2 items',
+        readingB2: 'Reading — B2 items',
+        readingC1C2: 'Reading — C1/C2 items',
+      },
+      dimensionShorts: {
+        listeningB2: 'Listening B2',
+        listeningC1C2: 'Listening C1/C2',
+        readingB2: 'Reading B2',
+        readingC1C2: 'Reading C1/C2',
+      },
+      dimensionsRadarTitle: 'Dimension Profile (Listening & Reading)',
+      bandNarratives: {
+        b1Plus: {
+          headline: 'Foundational comprehension development is needed before university study',
+          recommendation:
+            'Build core listening and reading skills with graded materials and structured tuition before attempting advanced academic study.',
+        },
+        lowB2: {
+          headline: 'Continued consolidation recommended before university entry',
+          recommendation:
+            'Strengthen comprehension of main ideas and specific details through regular exposure to authentic talks and texts.',
+        },
+        highB2LowC1: {
+          headline: 'Approaching academic readiness — targeted preparation advised',
+          recommendation:
+            'Focus on inference, tone, speaker attitude, and nuanced meaning in extended texts and talks to secure C1-level comprehension.',
+        },
+        c1: {
+          headline: 'Academically ready for university study in English',
+          recommendation:
+            'Continue engaging with complex academic lectures and literature to consolidate C1-level comprehension.',
+        },
+        c1PlusNearC2: {
+          headline: 'Strong academic readiness, approaching mastery',
+          recommendation:
+            'Refine sensitivity to register shifts, irony, and rhetorical intent across the most demanding materials.',
+        },
+        c1PlusC2: {
+          headline: 'Full academic and professional comprehension readiness',
+          recommendation:
+            'Maintain your outstanding standard by engaging with advanced academic literature, lectures, and professional discourse.',
+        },
+        c2: {
+          headline: 'Full academic and professional comprehension readiness',
+          recommendation:
+            'Maintain your outstanding standard by engaging with advanced academic literature, lectures, and professional discourse.',
+        },
+      },
+      downloadingPdf: 'Preparing your PDF…',
+      pdfError: 'PDF download failed. Please try again.',
     },
     teacher: {
       loginLabel: 'For Subscribed Teachers',
@@ -554,7 +680,7 @@ export const messages = {
     },
     info: {
       title: '開始之前',
-      subtitle: '請提供你的資料，這些資料將顯示於診斷報告。測試共 90 題（60 題語法 + 30 題詞彙），限時 60 分鐘。',
+      subtitle: '請先選擇卷別，再填寫將顯示於報告的個人資料。',
       userGroup: '學習群組',
       name: '姓名',
       id: '學生 / 考生編號',
@@ -621,8 +747,8 @@ export const messages = {
       basedOn: '根據目前提交紀錄計算。',
       partBVocabI: '乙部 I',
       partBVocabII: '乙部 II',
-      vocabCollocations: '搭配詞及慣用語',
-      vocabSpecialized: '細緻及專門詞彙',
+      vocabCollocations: '詞彙（常用）',
+      vocabSpecialized: '詞彙（專門術語）',
       approxIelts: '參考 IELTS',
       approxToefl: '參考 TOEFL iBT',
       proficiencyDisclaimer:
@@ -659,6 +785,120 @@ export const messages = {
         strong: '強',
         excellent: '優秀',
       },
+    },
+    test2: {
+      pickerTitle: '選擇測試卷別',
+      pickerHint: '你的測試碼可分別用於每份卷別。',
+      paperNames: {
+        '01': '卷一 — 應用語法及詞彙',
+        '02': '卷二 — 聆聽及閱讀',
+      },
+      paperDescs: {
+        '01': '90 題（60 題語法 + 30 題詞彙）· 60 分鐘',
+        '02': '45 題（20 題聆聽 + 25 題閱讀）· 60 分鐘',
+      },
+      paperIntros: {
+        '01': {
+          summary:
+            '篇章及句子層面的填空選擇題，評估考生對語言系統的掌握，涵蓋 12 個語法範疇及 CEFR C1/C2 詞彙。',
+          details: [
+            '甲部：60 題應用語法，涵蓋 12 個維度',
+            '乙部：30 題詞彙（常用詞及專門術語）',
+            '限時 60 分鐘',
+          ],
+        },
+        '02': {
+          summary:
+            '聆聽篇章（演講、對話、討論）及不同體裁的閱讀文章，評估對主旨、語氣、態度及文章結構的理解。',
+          details: [
+            '甲部：20 題聆聽 — 每段錄音只限播放一次',
+            '乙部：25 題閱讀，附可捲動篇章',
+            '限時 60 分鐘',
+          ],
+        },
+      },
+      passageRangeHeader: '第 {from} 至 {to} 題參閱以下段落',
+      remainingUses: '次可用',
+      noRemaining: '已無可用次數',
+      quizTitle: '卷二 - 聆聽及閱讀',
+      loading: '正在準備測試…',
+      startError: '未能開始測試，請重試。',
+      noRemainingError: '此測試碼在本卷別已無可用次數。',
+      submitError: '提交失敗，請檢查網絡連線後重試。',
+      retry: '重試',
+      instructionsIntro: '請選出最佳答案。所有題目分數相同。甲部為聆聽，乙部為閱讀。',
+      instructionsAudioLabel: '聆聽：',
+      instructionsAudio: '請先閱讀題目，準備好後按播放鍵。每段錄音只能播放一次。',
+      playAudio: '播放錄音',
+      playOnceNote: '每段錄音只可聆聽一次。',
+      audioLoading: '正在載入錄音…',
+      audioPlaying: '播放中 — 請細心聆聽',
+      audioPlayed: '錄音已播放（只限一次）',
+      audioError: '錄音載入失敗，按此重試。',
+      audioCheckTitle: '音量測試',
+      audioCheckBody: '本卷設有聆聽部分。開始前，請按下方按鈕播放測試音效，並將裝置音量調校至清晰舒適的水平。',
+      audioCheckReplayNote: '測試音效可不限次數重複播放。',
+      audioCheckOnceReminder: '正式測試時，每段錄音只會播放一次，請務必在開始前調校好音量。',
+      audioCheckTimerNote: '60 分鐘計時將於按下「開始測試」後才開始。',
+      audioCheckPlay: '播放測試音效',
+      audioCheckPlaying: '播放中…',
+      audioCheckStart: '開始測試',
+      passageLabel: '閱讀篇章',
+      passageScrollHint: '在方框內捲動以閱讀整篇文章。',
+      reportSubtitle: 'English Diagnostic Test - 卷二聆聽及閱讀',
+      partAListening: '聆聽',
+      partBReading: '閱讀',
+      overallBand: '整體 CEFR 估算',
+      partBands: '分項 CEFR 估算',
+      partBandListening: '聆聽（甲部）',
+      partBandReading: '閱讀（乙部）',
+      difficultyTitle: '按難度分級的表現',
+      difficultyNote: '題目按設計分為 B2 或 C1/C2 級。C1/C2 題目表現良好，代表已具備應付高階學術理解的能力。',
+      dimensionLabels: {
+        listeningB2: '聆聽 — B2 題目',
+        listeningC1C2: '聆聽 — C1/C2 題目',
+        readingB2: '閱讀 — B2 題目',
+        readingC1C2: '閱讀 — C1/C2 題目',
+      },
+      dimensionShorts: {
+        listeningB2: '聆聽 B2',
+        listeningC1C2: '聆聽 C1/C2',
+        readingB2: '閱讀 B2',
+        readingC1C2: '閱讀 C1/C2',
+      },
+      dimensionsRadarTitle: '維度分析（聆聽及閱讀）',
+      bandNarratives: {
+        b1Plus: {
+          headline: '升讀大學前需先建立基礎理解能力',
+          recommendation: '建議使用分級教材及有系統的課程，先鞏固核心聆聽及閱讀能力，再進行高階學術學習。',
+        },
+        lowB2: {
+          headline: '建議在入讀大學前持續鞏固',
+          recommendation: '透過定期接觸真實講話及文章，加強掌握主旨及具體細節的能力。',
+        },
+        highB2LowC1: {
+          headline: '接近學術準備水平 — 建議進行針對性訓練',
+          recommendation: '集中訓練推論、語氣、說話者態度及長篇內容的細緻含意，以穩固 C1 水平的理解能力。',
+        },
+        c1: {
+          headline: '已具備以英語修讀大學課程的學術準備',
+          recommendation: '持續接觸複雜的學術講座及文獻，鞏固 C1 水平的理解能力。',
+        },
+        c1PlusNearC2: {
+          headline: '學術準備充足，接近精通水平',
+          recommendation: '進一步提升對語域轉換、反諷及修辭意圖的敏感度，挑戰最高難度的材料。',
+        },
+        c1PlusC2: {
+          headline: '已全面具備學術及專業理解能力',
+          recommendation: '建議持續接觸進階學術文獻、講座及專業討論，保持卓越水平。',
+        },
+        c2: {
+          headline: '已全面具備學術及專業理解能力',
+          recommendation: '建議持續接觸進階學術文獻、講座及專業討論，保持卓越水平。',
+        },
+      },
+      downloadingPdf: '正在準備 PDF…',
+      pdfError: 'PDF 下載失敗，請重試。',
     },
     teacher: {
       loginLabel: '訂閱教師專區',

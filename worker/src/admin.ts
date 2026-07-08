@@ -15,6 +15,8 @@ type VoucherRow = {
   sold_to: string | null;
   uses_allowed: number;
   use_count: number;
+  use_count_test1: number;
+  use_count_test2: number;
 };
 
 type TeacherCredentialRow = {
@@ -25,7 +27,17 @@ type TeacherCredentialRow = {
   voucher_count: number;
   total_use_count: number;
   total_uses_allowed: number;
+  total_use_count_test1: number;
+  total_use_count_test2: number;
 };
+
+const VOUCHER_SELECT_SQL = `SELECT v.code, v.used_at, v.used_by_session, v.user_group, v.education_level, v.remark, v.sold_to,
+                                    v.uses_allowed, v.use_count,
+                                    COALESCE(vtu1.use_count, 0) AS use_count_test1,
+                                    COALESCE(vtu2.use_count, 0) AS use_count_test2
+                             FROM vouchers v
+                             LEFT JOIN voucher_test_usage vtu1 ON vtu1.voucher_code = v.code AND vtu1.test_id = 1
+                             LEFT JOIN voucher_test_usage vtu2 ON vtu2.voucher_code = v.code AND vtu2.test_id = 2`;
 
 const DEFAULT_USER_GROUP = 'General Learner';
 
@@ -93,12 +105,16 @@ async function syncSubmissionsUserGroupForVoucher(env: AdminEnv, voucherCode: st
 function mapVoucher(row: VoucherRow) {
   const usesAllowed = Number(row.uses_allowed ?? 1);
   const useCount = Number(row.use_count ?? 0);
+  const useCountTest1 = Number(row.use_count_test1 ?? 0);
+  const useCountTest2 = Number(row.use_count_test2 ?? 0);
   return {
     code: row.code,
     used: useCount >= usesAllowed,
     usedAt: row.used_at,
     usesAllowed,
     useCount,
+    useCountTest1,
+    useCountTest2,
     userGroup: row.user_group || DEFAULT_USER_GROUP,
     educationLevel: row.education_level,
     remark: row.remark,
@@ -115,6 +131,8 @@ function mapTeacherCredential(row: TeacherCredentialRow) {
     voucherCount: Number(row.voucher_count ?? 0),
     totalUseCount: Number(row.total_use_count ?? 0),
     totalUsesAllowed: Number(row.total_uses_allowed ?? 0),
+    totalUseCountTest1: Number(row.total_use_count_test1 ?? 0),
+    totalUseCountTest2: Number(row.total_use_count_test2 ?? 0),
   };
 }
 
@@ -128,12 +146,34 @@ export async function adminSummary(_request: Request, env: AdminEnv, origin: str
     FROM vouchers`,
   ).first<{ total: number; used: number; available: number; assigned: number }>();
 
+  const usedTest1Row = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT voucher_code) AS count
+     FROM voucher_test_usage WHERE test_id = 1 AND use_count > 0`,
+  ).first<{ count: number }>();
+
+  const usedTest2Row = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT voucher_code) AS count
+     FROM voucher_test_usage WHERE test_id = 2 AND use_count > 0`,
+  ).first<{ count: number }>();
+
+  const submissionsTest1Row = await env.DB.prepare(
+    'SELECT COUNT(*) AS count FROM submissions',
+  ).first<{ count: number }>();
+
+  const submissionsTest2Row = await env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM test_attempts WHERE test_id = 2 AND status = 'completed'`,
+  ).first<{ count: number }>();
+
   return json(
     {
       total: Number(row?.total ?? 0),
       used: Number(row?.used ?? 0),
       available: Number(row?.available ?? 0),
       assigned: Number(row?.assigned ?? 0),
+      usedTest1: Number(usedTest1Row?.count ?? 0),
+      usedTest2: Number(usedTest2Row?.count ?? 0),
+      submissionsTest1: Number(submissionsTest1Row?.count ?? 0),
+      submissionsTest2: Number(submissionsTest2Row?.count ?? 0),
     },
     undefined,
     origin,
@@ -147,20 +187,20 @@ export async function adminListVouchers(request: Request, env: AdminEnv, origin:
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 500);
   const offset = Math.max(Number(url.searchParams.get('offset') ?? 0), 0);
 
-  let sql = 'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE 1=1';
+  let sql = `${VOUCHER_SELECT_SQL} WHERE 1=1`;
   const binds: Array<string | number> = [];
 
   if (q) {
-    sql += ' AND code LIKE ?';
+    sql += ' AND v.code LIKE ?';
     binds.push(`%${q}%`);
   }
   if (status === 'used') {
-    sql += ' AND use_count >= uses_allowed';
+    sql += ' AND v.use_count >= v.uses_allowed';
   } else if (status === 'available') {
-    sql += ' AND use_count < uses_allowed';
+    sql += ' AND v.use_count < v.uses_allowed';
   }
 
-  sql += ' ORDER BY code ASC LIMIT ? OFFSET ?';
+  sql += ' ORDER BY v.code ASC LIMIT ? OFFSET ?';
   binds.push(limit, offset);
 
   const result = await env.DB.prepare(sql)
@@ -204,9 +244,7 @@ export async function adminCreateVoucher(request: Request, env: AdminEnv, origin
     return json({ error: 'Voucher code already exists' }, { status: 409 }, origin);
   }
 
-  const row = await env.DB.prepare(
-    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE code = ?',
-  )
+  const row = await env.DB.prepare(`${VOUCHER_SELECT_SQL} WHERE v.code = ?`)
     .bind(code)
     .first<VoucherRow>();
 
@@ -266,9 +304,7 @@ export async function adminUpdateVoucher(request: Request, env: AdminEnv, codePa
     await syncSubmissionsUserGroupForVoucher(env, code, userGroup);
   }
 
-  const row = await env.DB.prepare(
-    'SELECT code, used_at, used_by_session, user_group, education_level, remark, sold_to, uses_allowed, use_count FROM vouchers WHERE code = ?',
-  )
+  const row = await env.DB.prepare(`${VOUCHER_SELECT_SQL} WHERE v.code = ?`)
     .bind(code)
     .first<VoucherRow>();
 
@@ -284,11 +320,14 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
        tc.user_group,
        tc.remark,
        tc.created_at,
-       COUNT(v.code) AS voucher_count,
+       COUNT(DISTINCT v.code) AS voucher_count,
        COALESCE(SUM(v.use_count), 0) AS total_use_count,
-       COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed
+       COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed,
+       COALESCE(SUM(CASE WHEN vtu.test_id = 1 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test1,
+       COALESCE(SUM(CASE WHEN vtu.test_id = 2 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test2
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
+     LEFT JOIN voucher_test_usage vtu ON vtu.voucher_code = v.code
      GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at
      ORDER BY tc.user_group ASC`,
   ).all<TeacherCredentialRow>();
