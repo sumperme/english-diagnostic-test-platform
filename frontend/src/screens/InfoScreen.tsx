@@ -60,12 +60,13 @@ export function InfoScreen({
   };
   const [testCode, setTestCode] = useState<string>(() => PAPER_CODES.find(isSelectable) ?? '01');
 
-  // If the refreshed counts exhaust the selected paper, move to one still available.
+  // If the refreshed list exhausts the selected paper — or drops it entirely
+  // (e.g. the test was deactivated) — move to one still available.
   useEffect(() => {
     if (!freshTests) return;
     setTestCode((current) => {
       const entry = freshTests.find((test) => test.testCode === current);
-      if (!entry || entry.remainingUses > 0) return current;
+      if (entry && entry.remainingUses > 0) return current;
       const firstAvailable = PAPER_CODES.find((code) => {
         const paper = freshTests.find((test) => test.testCode === code);
         return paper ? paper.remainingUses > 0 : false;

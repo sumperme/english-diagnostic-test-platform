@@ -82,13 +82,15 @@ export function AudioOncePlayer({
           objectUrlRef.current = null;
         }
       };
-      // The single allowed play is consumed as soon as playback begins.
-      markPlayed(attemptId, questionCode);
       await audio.play();
+      // Consume the single allowed play only once playback has actually
+      // begun; a rejected play() (autoplay policy, decode error) must not
+      // burn the candidate's one listen.
+      markPlayed(attemptId, questionCode);
       setState('playing');
       onPlaybackChange?.(true);
     } catch {
-      // Fetch/decode failed before playback — allow a retry.
+      // Fetch/decode/play failed before playback began — allow a retry.
       if (!loadPlayedSet(attemptId).has(questionCode)) {
         setState('error');
       } else {
