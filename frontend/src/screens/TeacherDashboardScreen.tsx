@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { clearTeacherSession, fetchTeacherDashboard } from '../lib/api';
+import { FeedbackBody } from '../components/AiFeedbackSection';
+import {
+  ApiError,
+  clearTeacherSession,
+  fetchClassOverviews,
+  fetchTeacherDashboard,
+  generateClassOverview,
+} from '../lib/api';
 import { explainedQuestionId } from '../lib/explainedQuestionId';
-import type { TeacherDashboardData, TeacherQuestionStat, TeacherSession, TeacherSubmissionRow } from '../types';
+import type {
+  AiQuota,
+  ClassOverview,
+  TeacherDashboardData,
+  TeacherQuestionStat,
+  TeacherSession,
+  TeacherSubmissionRow,
+} from '../types';
 
 type SortDir = 'asc' | 'desc';
 
@@ -45,6 +59,125 @@ function correctRateColor(rate: number | null): string {
   if (rate >= 70) return 'bg-emerald-500';
   if (rate >= 40) return 'bg-amber-400';
   return 'bg-rose-400';
+}
+
+function aiSnippet(text: string, maxWords = 12): string {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ');
+  return words.length <= maxWords ? words.join(' ') : `${words.slice(0, maxWords).join(' ')}…`;
+}
+
+/** Class AI Overview card: history pager + quota-limited generate button. */
+function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: string; hasSubmissions: boolean }) {
+  const [overviews, setOverviews] = useState<ClassOverview[]>([]);
+  const [quota, setQuota] = useState<AiQuota | null>(null);
+  const [index, setIndex] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchClassOverviews(teacherKey)
+      .then((list) => {
+        if (cancelled) return;
+        setOverviews(list.overviews);
+        setQuota(list.quota);
+      })
+      .catch(() => {
+        // Quota/history unavailable — button falls back to a plain label.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [teacherKey]);
+
+  const generate = async () => {
+    if (generating) return;
+    setGenerating(true);
+    setError('');
+    try {
+      const result = await generateClassOverview(teacherKey);
+      setOverviews((previous) => [{ id: Date.now(), ...result.overview }, ...previous]);
+      setQuota(result.quota);
+      setIndex(0);
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : '';
+      if (code === 'NO_QUOTA') {
+        setError('No AI overview uses left. Ask the administrator to increase your allowance.');
+      } else if (code === 'NO_SUBMISSIONS') {
+        setError('No submissions in this class yet — the overview needs at least one result.');
+      } else {
+        setError('The AI overview is temporarily unavailable. Your quota was not deducted — please try again in a moment.');
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const remaining = quota ? quota.remaining : null;
+  const current = overviews[index];
+  const disabled = generating || !hasSubmissions || (remaining != null && remaining <= 0);
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 className="mb-4 text-center text-sm font-bold uppercase tracking-widest text-slate-500">
+        Class AI Overview
+      </h2>
+
+      {current ? (
+        <div className="mx-auto mb-5 max-w-3xl rounded-2xl border border-edt-indigo/25 bg-slate-50/60 p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setIndex((i) => Math.min(overviews.length - 1, i + 1))}
+              disabled={index >= overviews.length - 1}
+              aria-label="Older overview"
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ←
+            </button>
+            <p className="text-xs text-slate-400">
+              {fmtDatetime(current.createdAt)} · {index + 1} / {overviews.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              disabled={index <= 0}
+              aria-label="Newer overview"
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              →
+            </button>
+          </div>
+          <FeedbackBody content={current.contentEn} />
+        </div>
+      ) : null}
+
+      {generating ? (
+        <div className="mx-auto mb-5 flex max-w-3xl items-center justify-center gap-2 rounded-2xl border border-edt-indigo/25 bg-white p-6">
+          <span className="h-2 w-2 animate-bounce rounded-full bg-edt-indigo" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-edt-gold [animation-delay:150ms]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-edt-indigo [animation-delay:300ms]" />
+          <span className="ml-2 text-sm font-semibold text-edt-indigo">Generating class overview…</span>
+        </div>
+      ) : null}
+
+      {error ? <p className="mx-auto mb-4 max-w-3xl text-center text-sm text-amber-700">{error}</p> : null}
+
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={disabled}
+          title={remaining != null && remaining <= 0 ? 'No AI overview uses left.' : undefined}
+          className="inline-flex items-center gap-2 rounded-xl bg-edt-indigo px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-[#4f4e7d] hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {generating
+            ? 'Generating…'
+            : `Generate Class Overview${remaining != null ? ` (${remaining} uses left)` : ''}`}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 export function TeacherDashboardScreen({
@@ -257,12 +390,13 @@ export function TeacherDashboardScreen({
                       <th className="px-3 py-2 whitespace-nowrap">CEFR</th>
                       <th className="px-3 py-2">Weak Areas</th>
                       <th className="px-3 py-2">Recommendation</th>
+                      <th className="px-3 py-2">AI Feedback</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedSubmissions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
+                        <td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
                           No submissions yet.
                         </td>
                       </tr>
@@ -290,6 +424,15 @@ export function TeacherDashboardScreen({
                             : <span className="text-emerald-600">None</span>}
                         </td>
                         <td className="px-3 py-3 max-w-[240px] text-xs text-slate-500">{sub.recommendation || '—'}</td>
+                        <td className="px-3 py-3 max-w-[220px] text-xs">
+                          {sub.aiFeedback ? (
+                            <span className="cursor-help text-edt-indigo" title={sub.aiFeedback}>
+                              {aiSnippet(sub.aiFeedback)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">N/A</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -389,6 +532,9 @@ export function TeacherDashboardScreen({
                 </table>
               </div>
             </section>
+
+            {/* Class AI Overview (bottom-center) */}
+            <ClassOverviewSection teacherKey={session.teacherKey} hasSubmissions={data.totalSubmissions > 0} />
           </>
         ) : null}
       </main>

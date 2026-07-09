@@ -4,9 +4,13 @@ import type {
   AdminTeacherCredentialList,
   AdminVoucher,
   AdminVoucherList,
+  AiFeedbackResponse,
   AttemptInstance,
   AttemptReportPayload,
   BackendData,
+  ClassOverview,
+  ClassOverviewList,
+  AiQuota,
   ReportResult,
   Session,
   TeacherDashboardData,
@@ -236,6 +240,54 @@ export async function downloadServerReportPdf(
   URL.revokeObjectURL(objectUrl);
 }
 
+// --- AI feedback (DeepSeek) ---
+
+export async function fetchAiFeedback(attemptId: string, sessionToken: string): Promise<AiFeedbackResponse> {
+  return parseJson<AiFeedbackResponse>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/ai-feedback`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    }),
+  );
+}
+
+/**
+ * Start generation. 202 -> pending; 409 ALREADY_GENERATED -> resolved as done
+ * with the stored feedback (permanent one-per-attempt limit).
+ */
+export async function startAiFeedback(attemptId: string, sessionToken: string): Promise<AiFeedbackResponse> {
+  const response = await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/ai-feedback`, {
+    method: 'POST',
+    headers: bearerHeaders(sessionToken),
+  });
+  const body = (await response.json()) as AiFeedbackResponse & { error?: string };
+  if (response.status === 409 && body.error === 'ALREADY_GENERATED') {
+    return { status: 'done', feedback: body.feedback ?? null };
+  }
+  if (!response.ok && response.status !== 202) {
+    throw new ApiError(body.error ?? 'AI_FAILED', `AI feedback request failed (${response.status})`);
+  }
+  return { status: body.status ?? 'pending', feedback: body.feedback ?? null };
+}
+
+export async function generateClassOverview(
+  teacherKey: string,
+): Promise<{ overview: Omit<ClassOverview, 'id'>; quota: AiQuota }> {
+  return parseJson(
+    await fetch(`${API_BASE}/api/teacher/class-overview`, {
+      method: 'POST',
+      headers: { 'X-Teacher-Key': teacherKey },
+    }),
+  );
+}
+
+export async function fetchClassOverviews(teacherKey: string): Promise<ClassOverviewList> {
+  return parseJson<ClassOverviewList>(
+    await fetch(`${API_BASE}/api/teacher/class-overviews`, {
+      headers: { 'X-Teacher-Key': teacherKey },
+    }),
+  );
+}
+
 // --- Teacher API ---
 
 export async function verifyTeacherKey(key: string): Promise<TeacherSession> {
@@ -328,7 +380,7 @@ export async function createAdminTeacherCredential(input: {
 
 export async function updateAdminTeacherCredential(
   key: string,
-  input: { remark?: string | null },
+  input: { remark?: string | null; aiUsesAllowed?: number },
 ): Promise<{ credential: AdminTeacherCredential | null }> {
   return adminFetch<{ credential: AdminTeacherCredential | null }>(
     `/api/admin/teacher-credentials/${encodeURIComponent(key)}`,

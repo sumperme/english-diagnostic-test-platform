@@ -184,6 +184,32 @@ export type AttemptReportPayload = {
   review: AttemptReviewRow[];
 };
 
+// --- AI feedback (DeepSeek) ---
+
+export type AiFeedback = { en: string; zhHK: string };
+
+export type AiFeedbackStatus = 'none' | 'pending' | 'done' | 'failed';
+
+export type AiFeedbackResponse = {
+  status: AiFeedbackStatus;
+  feedback: AiFeedback | null;
+  generatedAt?: number | null;
+};
+
+export type ClassOverview = {
+  id: number;
+  contentEn: string;
+  contentZh: string;
+  createdAt: number;
+};
+
+export type AiQuota = { allowed: number; used: number; remaining: number };
+
+export type ClassOverviewList = {
+  quota: AiQuota;
+  overviews: ClassOverview[];
+};
+
 export type Test2Result = AttemptReportPayload & { attemptId: string };
 
 export type AdminSummary = {
@@ -233,6 +259,8 @@ export type TeacherSubmissionRow = {
   cefrLabel: string;
   weakDimensions: string[];
   recommendation: string;
+  /** Generated AI feedback (English), or null when none exists. */
+  aiFeedback: string | null;
 };
 
 export type TeacherDimensionStat = {
@@ -276,6 +304,8 @@ export type AdminTeacherCredential = {
   totalUsesAllowed: number;
   totalUseCountTest1: number;
   totalUseCountTest2: number;
+  aiUsesAllowed: number;
+  aiUseCount: number;
 };
 
 export type AdminTeacherCredentialList = {

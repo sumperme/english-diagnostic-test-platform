@@ -59,6 +59,7 @@ type VoucherDraft = {
 
 type TeacherDraft = {
   remark: string;
+  aiUsesAllowed: number;
 };
 
 type SortDir = 'asc' | 'desc' | null;
@@ -76,7 +77,7 @@ function draftFromVoucher(voucher: AdminVoucher): VoucherDraft {
 }
 
 function draftFromTeacher(cred: AdminTeacherCredential): TeacherDraft {
-  return { remark: cred.remark ?? '' };
+  return { remark: cred.remark ?? '', aiUsesAllowed: cred.aiUsesAllowed ?? 20 };
 }
 
 function isDraftChanged(draft: VoucherDraft, voucher: AdminVoucher): boolean {
@@ -119,7 +120,7 @@ function RefreshButton({ loading, onClick }: { loading: boolean; onClick: () => 
 }
 
 function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential): boolean {
-  return draft.remark !== (cred.remark ?? '');
+  return draft.remark !== (cred.remark ?? '') || draft.aiUsesAllowed !== (cred.aiUsesAllowed ?? 20);
 }
 
 // ─── Main AdminScreen ─────────────────────────────────────────────────────────
@@ -318,7 +319,10 @@ export function AdminScreen() {
     setLoading(true);
     setMessage('');
     try {
-      await updateAdminTeacherCredential(key, { remark: draft.remark || null });
+      await updateAdminTeacherCredential(key, {
+        remark: draft.remark || null,
+        aiUsesAllowed: Math.max(0, Math.floor(draft.aiUsesAllowed)),
+      });
       setMessage(`Saved credential for ${key}.`);
       await loadTeacherData();
     } catch {
@@ -713,6 +717,7 @@ export function AdminScreen() {
                       <th className="px-3 py-2 text-right"># Vouchers</th>
                       <th className="px-3 py-2 text-right">Test 1 Used / Allowed</th>
                       <th className="px-3 py-2 text-right">Test 2 Used / Allowed</th>
+                      <th className="px-3 py-2 text-right">AI Uses (used / allowed)</th>
                       <th className="px-3 py-2">Remark</th>
                       <th className="px-3 py-2" />
                     </tr>
@@ -720,7 +725,7 @@ export function AdminScreen() {
                   <tbody>
                     {credentials.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
+                        <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
                           No teacher credentials yet.
                         </td>
                       </tr>
@@ -744,11 +749,27 @@ export function AdminScreen() {
                           <td className="px-3 py-3 text-right text-xs font-semibold">
                             {cred.totalUseCountTest2}/{cred.totalUsesAllowed}
                           </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-xs font-semibold text-slate-500">{cred.aiUseCount} /</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={draft.aiUsesAllowed}
+                                onChange={(e) => {
+                                  const next = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                                  setTeacherDrafts((prev) => ({ ...prev, [cred.key]: { ...draft, aiUsesAllowed: next } }));
+                                }}
+                                className="w-16 rounded border border-slate-200 px-2 py-1 text-xs"
+                              />
+                            </div>
+                          </td>
                           <td className="px-3 py-3">
                             <input
                               value={draft.remark}
                               onChange={(e) =>
-                                setTeacherDrafts((prev) => ({ ...prev, [cred.key]: { remark: e.target.value } }))
+                                setTeacherDrafts((prev) => ({ ...prev, [cred.key]: { ...draft, remark: e.target.value } }))
                               }
                               placeholder="Remark"
                               className="w-full min-w-[180px] rounded border border-slate-200 px-2 py-1 text-xs"

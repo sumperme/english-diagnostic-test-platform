@@ -29,6 +29,8 @@ type TeacherCredentialRow = {
   total_uses_allowed: number;
   total_use_count_test1: number;
   total_use_count_test2: number;
+  ai_uses_allowed: number;
+  ai_use_count: number;
 };
 
 const VOUCHER_SELECT_SQL = `SELECT v.code, v.used_at, v.used_by_session, v.user_group, v.education_level, v.remark, v.sold_to,
@@ -133,6 +135,8 @@ function mapTeacherCredential(row: TeacherCredentialRow) {
     totalUsesAllowed: Number(row.total_uses_allowed ?? 0),
     totalUseCountTest1: Number(row.total_use_count_test1 ?? 0),
     totalUseCountTest2: Number(row.total_use_count_test2 ?? 0),
+    aiUsesAllowed: Number(row.ai_uses_allowed ?? 20),
+    aiUseCount: Number(row.ai_use_count ?? 0),
   };
 }
 
@@ -320,6 +324,8 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
        tc.user_group,
        tc.remark,
        tc.created_at,
+       tc.ai_uses_allowed,
+       tc.ai_use_count,
        COUNT(DISTINCT v.code) AS voucher_count,
        COALESCE(SUM(v.use_count), 0) AS total_use_count,
        COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed,
@@ -328,7 +334,7 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      LEFT JOIN voucher_test_usage vtu ON vtu.voucher_code = v.code
-     GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at
+     GROUP BY tc.key, tc.user_group, tc.remark, tc.created_at, tc.ai_uses_allowed, tc.ai_use_count
      ORDER BY tc.user_group ASC`,
   ).all<TeacherCredentialRow>();
 
@@ -386,19 +392,26 @@ export async function adminCreateTeacherCredential(request: Request, env: AdminE
 
 export async function adminUpdateTeacherCredential(request: Request, env: AdminEnv, keyParam: string, origin: string | undefined, json: JsonResponder) {
   const key = keyParam.trim();
-  const body = (await request.json()) as { remark?: string | null };
+  const body = (await request.json()) as { remark?: string | null; aiUsesAllowed?: number };
 
   const existing = await env.DB.prepare('SELECT key FROM teacher_credentials WHERE key = ?').bind(key).first();
   if (!existing) {
     return json({ error: 'Teacher credential not found' }, { status: 404 }, origin);
   }
 
-  await env.DB.prepare('UPDATE teacher_credentials SET remark = ? WHERE key = ?')
-    .bind(body.remark ?? null, key)
-    .run();
+  if (typeof body.aiUsesAllowed === 'number' && Number.isFinite(body.aiUsesAllowed)) {
+    const aiUsesAllowed = Math.max(0, Math.floor(body.aiUsesAllowed));
+    await env.DB.prepare('UPDATE teacher_credentials SET remark = ?, ai_uses_allowed = ? WHERE key = ?')
+      .bind(body.remark ?? null, aiUsesAllowed, key)
+      .run();
+  } else {
+    await env.DB.prepare('UPDATE teacher_credentials SET remark = ? WHERE key = ?')
+      .bind(body.remark ?? null, key)
+      .run();
+  }
 
   const row = await env.DB.prepare(
-    `SELECT tc.key, tc.user_group, tc.remark, tc.created_at,
+    `SELECT tc.key, tc.user_group, tc.remark, tc.created_at, tc.ai_uses_allowed, tc.ai_use_count,
        COUNT(v.code) AS voucher_count,
        COALESCE(SUM(v.use_count), 0) AS total_use_count,
        COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed

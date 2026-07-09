@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
 import { ANSWER_KEY, type Question } from '../data/questions';
@@ -132,6 +133,20 @@ export function ResultsScreen({
       setIsExporting(false);
     }
   };
+
+  // AI feedback needs the server-linked attempt (dual-write); without it the
+  // legacy download button renders alone.
+  const serverAttemptId = !result.backendError ? result.backendData?.attemptId : null;
+
+  const downloadPdfButton = (
+    <button
+      onClick={() => void exportPdf()}
+      disabled={isExporting}
+      className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {isExporting ? t.report.downloading : t.report.downloadPdf}
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -347,14 +362,16 @@ export function ResultsScreen({
           )}
         </section>
 
-        <div className="pb-4 pt-8 text-center no-print">
-          <button
-            onClick={() => void exportPdf()}
-            disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isExporting ? t.report.downloading : t.report.downloadPdf}
-          </button>
+        <div className="pb-4 pt-8 no-print">
+          {serverAttemptId ? (
+            <AiFeedbackSection
+              attemptId={serverAttemptId}
+              sessionToken={session.sessionToken}
+              downloadButton={downloadPdfButton}
+            />
+          ) : (
+            <div className="flex justify-center">{downloadPdfButton}</div>
+          )}
         </div>
       </main>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
 import { useLocale } from '../i18n/LocaleContext';
@@ -433,15 +434,21 @@ export function Test2ResultsScreen({
           ) : null}
         </section>
 
-        <div className="pb-4 pt-8 text-center no-print">
-          {pdfError ? <p className="mb-3 text-sm text-rose-600">{t.test2.pdfError}</p> : null}
-          <button
-            onClick={() => void exportPdf()}
-            disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isExporting ? t.report.downloading : t.report.downloadPdf}
-          </button>
+        <div className="pb-4 pt-8 no-print">
+          {pdfError ? <p className="mb-3 text-center text-sm text-rose-600">{t.test2.pdfError}</p> : null}
+          <AiFeedbackSection
+            attemptId={result.attemptId}
+            sessionToken={session.sessionToken}
+            downloadButton={
+              <button
+                onClick={() => void exportPdf()}
+                disabled={isExporting}
+                className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExporting ? t.report.downloading : t.report.downloadPdf}
+              </button>
+            }
+          />
         </div>
       </main>
     </div>

@@ -34,6 +34,8 @@ export type ReportStrings = {
   cohortRank: string;
   cohortSize: string;
   groupPercentile: string;
+  aiFeedbackTitle: string;
+  aiFeedbackDisclaimer: string;
   answerReview: string;
   questionCode: string;
   yourAnswer: string;
@@ -87,6 +89,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     level: 'Level',
     weakDimensions: 'Priority dimensions',
     none: 'None',
+    aiFeedbackTitle: 'AI Tutor Feedback',
+    aiFeedbackDisclaimer: 'AI-generated feedback, for reference alongside the full report.',
     cohortTitle: 'Cohort Comparison',
     percentile: 'Percentile (all candidates)',
     cohortRank: 'Rank',
@@ -236,6 +240,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     level: '等級',
     weakDimensions: '優先提升範疇',
     none: '無',
+    aiFeedbackTitle: 'AI 導師評語',
+    aiFeedbackDisclaimer: 'AI 產生的評語，僅供參考，請結合完整報告使用。',
     cohortTitle: '同儕比較',
     percentile: '百分位（全體考生）',
     cohortRank: '排名',

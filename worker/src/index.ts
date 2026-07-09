@@ -1,4 +1,5 @@
 import { computePercentileStats, handleAdminRequest } from './admin';
+import { handleAiRequest } from './aiFeedback';
 import { handleAssetRequest } from './assets';
 import { handleAttemptRequest } from './attempts';
 import { handleReportRequest } from './reports';
@@ -11,6 +12,8 @@ type Env = {
   ALLOWED_ORIGIN?: string;
   SESSION_TTL_SECONDS?: string;
   ADMIN_PASSWORD?: string;
+  /** Secret: `npx wrangler secret put DEEPSEEK_API_KEY` / worker/.dev.vars locally. */
+  DEEPSEEK_API_KEY?: string;
 };
 
 type VerifyVoucherRequest = {
@@ -37,6 +40,8 @@ type TeacherSubmissionRow = {
   payload: string;
   dimension_scores: string | null;
   score_dist: string | null;
+  ai_status: string | null;
+  ai_feedback_en: string | null;
 };
 
 const DEFAULT_USER_GROUP = 'General Learner';
@@ -299,6 +304,9 @@ async function submit(request: Request, env: Env, origin?: string) {
       cohortAll: all,
       cohortGroup: group,
     });
+    // Link the legacy row to its attempt so the teacher dashboard can join
+    // AI feedback onto the submission list.
+    await env.DB.prepare('UPDATE submissions SET attempt_id = ? WHERE id = ?').bind(attemptId, submissionId).run();
   } catch (error) {
     console.error('Test 1 dual-write failed:', error);
   }
@@ -381,10 +389,14 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
     .bind(userGroup)
     .first<{ total: number; used: number }>();
 
-  // All submissions for this user_group
+  // All submissions for this user_group, joined to their dual-written attempt
+  // for the per-student AI feedback snippet.
   const submissionsResult = await env.DB.prepare(
-    `SELECT id, created_at as submitted_at, total_score, payload, dimension_scores, score_dist
-     FROM submissions WHERE user_group = ? ORDER BY created_at DESC`,
+    `SELECT s.id, s.created_at as submitted_at, s.total_score, s.payload, s.dimension_scores, s.score_dist,
+            ar.ai_status AS ai_status, ar.ai_feedback_en AS ai_feedback_en
+     FROM submissions s
+     LEFT JOIN attempt_reports ar ON ar.test_attempt_id = s.attempt_id
+     WHERE s.user_group = ? ORDER BY s.created_at DESC`,
   )
     .bind(userGroup)
     .all<TeacherSubmissionRow>();
@@ -531,6 +543,7 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
       cefrLabel,
       weakDimensions,
       recommendation,
+      aiFeedback: row.ai_status === 'done' ? row.ai_feedback_en : null,
     };
   });
 
@@ -554,7 +567,7 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const origin = getAllowedOrigin(request, env);
 
@@ -579,6 +592,13 @@ export default {
       const assetResponse = await handleAssetRequest(request, env, origin, json);
       if (assetResponse) {
         return assetResponse;
+      }
+
+      // Before the attempts router: it owns /api/attempts/:id/ai-feedback,
+      // which handleAttemptRequest would otherwise 404.
+      const aiResponse = await handleAiRequest(request, env, ctx, origin, json);
+      if (aiResponse) {
+        return aiResponse;
       }
 
       const attemptResponse = await handleAttemptRequest(request, env, origin, json);

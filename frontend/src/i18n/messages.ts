@@ -293,6 +293,18 @@ export const messages = {
       notAnswered: 'Not answered',
       downloadPdf: 'Download Report (PDF)',
       downloading: 'Downloading…',
+      aiSectionTitle: 'AI Tutor Feedback',
+      aiGenerate: 'Generate AI Feedback',
+      aiGenerating: 'Generating…',
+      aiTooltipOnce: 'One test allows one AI comment generation.',
+      aiLoadingLines: [
+        'Analysing your dimension profile…',
+        'Consulting the CEFR level descriptors…',
+        'Composing your personalised feedback…',
+      ],
+      aiFailed:
+        'Our AI tutor is temporarily unavailable — your results are unaffected. Please try generating the feedback again in a moment.',
+      aiDisclaimer: 'AI-generated feedback, for reference alongside your full report.',
       duration: 'Duration',
       backendError: 'Results could not be saved to the server. Your diagnostic report is shown below.',
       dimensionNarratives: {
@@ -770,6 +782,13 @@ export const messages = {
       notAnswered: '未作答',
       downloadPdf: '下載 PDF',
       downloading: '下載中…',
+      aiSectionTitle: 'AI 導師評語',
+      aiGenerate: '產生 AI 評語',
+      aiGenerating: '產生中…',
+      aiTooltipOnce: '每次測試只可產生一次 AI 評語。',
+      aiLoadingLines: ['正在分析你的維度表現…', '正在對照 CEFR 等級描述…', '正在撰寫你的個人化評語…'],
+      aiFailed: 'AI 導師暫時未能提供服務——你的成績不受影響，請稍後再試。',
+      aiDisclaimer: 'AI 產生的評語，僅供參考，請結合完整報告使用。',
       duration: '時間',
       backendError: '未能將結果儲存至伺服器。你的診斷報告如下。',
       dimensionNarratives: {

@@ -103,10 +103,18 @@ export async function handleReportRequest(
   }
 
   const report = await env.DB.prepare(
-    'SELECT report_version, variables FROM attempt_reports WHERE test_attempt_id = ?',
+    `SELECT report_version, variables, ai_status, ai_feedback_en, ai_feedback_zh, ai_generated_at
+     FROM attempt_reports WHERE test_attempt_id = ?`,
   )
     .bind(attemptId)
-    .first<{ report_version: string; variables: string }>();
+    .first<{
+      report_version: string;
+      variables: string;
+      ai_status: string | null;
+      ai_feedback_en: string | null;
+      ai_feedback_zh: string | null;
+      ai_generated_at: number | null;
+    }>();
   if (!report) return json({ error: 'Report not ready' }, { status: 404 }, origin);
 
   let variables: ReportVariablesV1;
@@ -116,8 +124,16 @@ export async function handleReportRequest(
     return json({ error: 'Corrupt report variables' }, { status: 500 }, origin);
   }
 
+  // Localized AI feedback (only once generation completed).
+  const aiFeedback =
+    report.ai_status === 'done'
+      ? (lang === 'zh-HK' ? report.ai_feedback_zh : report.ai_feedback_en) ?? report.ai_feedback_en
+      : null;
+
   const pdfFilename = reportPdfFilename(attempt.external_ref, variables.testCode, attemptId);
-  const cacheKey = `${attemptId}:${lang}:${report.report_version}`;
+  // ai_generated_at busts the cache so PDFs downloaded after generation include
+  // the feedback instead of serving the stale pre-feedback copy.
+  const cacheKey = `${attemptId}:${lang}:${report.report_version}:ai${report.ai_generated_at ?? 0}`;
 
   // Cache hit: stream straight from R2.
   const indexRow = await env.DB.prepare('SELECT r2_key FROM pdf_cache_index WHERE cache_key = ?')
@@ -145,10 +161,11 @@ export async function handleReportRequest(
     .bind(attemptId)
     .all<AttemptAnswerRow>();
 
-  const bytes = await renderReportPdf(env, variables, answers.results ?? [], lang);
+  const bytes = await renderReportPdf(env, variables, answers.results ?? [], lang, aiFeedback);
 
-  // Store + FIFO eviction.
-  const r2Key = `pdf-cache/${attemptId}-${lang}-${report.report_version}.pdf`;
+  // Store + FIFO eviction. The object key mirrors the cache key's AI state so
+  // pre- and post-feedback renders never overwrite each other.
+  const r2Key = `pdf-cache/${attemptId}-${lang}-${report.report_version}-ai${report.ai_generated_at ?? 0}.pdf`;
   await env.R2_ASSETS.put(r2Key, bytes, { httpMetadata: { contentType: 'application/pdf' } });
   await env.DB.prepare(
     'INSERT OR REPLACE INTO pdf_cache_index (cache_key, test_attempt_id, r2_key, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -240,6 +257,7 @@ async function renderReportPdf(
   vars: ReportVariablesV1,
   answers: AttemptAnswerRow[],
   lang: ReportLang,
+  aiFeedback: string | null = null,
 ): Promise<Uint8Array> {
   const strings = REPORT_STRINGS[lang];
   const doc = await PDFDocument.create();
@@ -510,6 +528,35 @@ async function renderReportPdf(
       text(value, MARGIN + 220, 9.5, { bold: true });
       y -= 15;
     }
+  }
+
+  // --- AI tutor feedback (only when generated; collapses cleanly otherwise) ---
+  if (aiFeedback) {
+    sectionHeading(strings.aiFeedbackTitle);
+    const lines = aiFeedback
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      // Template lines are "Label: content" — draw the label bold, body indented.
+      const separator = line.includes('：') ? '：' : ':';
+      const separatorAt = line.indexOf(separator);
+      if (separatorAt > 0 && separatorAt <= 24) {
+        const label = line.slice(0, separatorAt + 1);
+        const body = line.slice(separatorAt + 1).trim();
+        ensure(28);
+        text(label, MARGIN, 9.5, { bold: true, color: FOREST });
+        y -= 13;
+        paragraph(body, MARGIN + 12, 9, { lineGap: 3 });
+        y -= 3;
+      } else {
+        paragraph(line, MARGIN, 9, { lineGap: 3 });
+        y -= 3;
+      }
+    }
+    ensure(12);
+    text(strings.aiFeedbackDisclaimer, MARGIN, 7.5, { color: OLIVE });
+    y -= 12;
   }
 
   // --- Answer review (full MCQ feedback; question codes are backend-only) ---
