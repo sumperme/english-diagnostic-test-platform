@@ -180,6 +180,23 @@ const feedbackOf = (row: AiReportRow): BilingualFeedback | null =>
 // Student feedback job (background)
 // ---------------------------------------------------------------------------
 
+/** Count answered vs unanswered rows for AI prompt context. */
+async function loadAnswerStats(env: AiEnv, attemptId: string) {
+  const row = await env.DB.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN selected_option IS NOT NULL THEN 1 ELSE 0 END) AS answered
+     FROM test_attempt_answers
+     WHERE test_attempt_id = ?`,
+  )
+    .bind(attemptId)
+    .first<{ total: number; answered: number }>();
+
+  const total = Number(row?.total ?? 0);
+  const answered = Number(row?.answered ?? 0);
+  return { total, answered, unanswered: Math.max(0, total - answered) };
+}
+
 async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<void> {
   try {
     const meta = await env.DB.prepare(
@@ -199,11 +216,13 @@ async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<voi
 
     const variables = JSON.parse(report.variables) as ReportVariablesV1;
     const vocabSplit = variables.testCode === '01' ? await loadVocabSplit(env, attemptId) : undefined;
+    const answerStats = await loadAnswerStats(env, attemptId);
 
     const userPrompt = buildStudentUserPrompt({
       variables,
       dimensionLabels: REPORT_STRINGS.en.dimensionLabels,
       vocabSplit,
+      answerStats,
     });
 
     const usageContext: AiUsageContext = {

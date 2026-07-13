@@ -25,6 +25,8 @@ export type StudentPromptContext = {
   dimensionLabels: Record<string, string>;
   /** Test 1 only: Part B vocabulary split (common Q61-75 / specialized Q76-90). */
   vocabSplit?: { commonCorrect: number; commonTotal: number; specializedCorrect: number; specializedTotal: number };
+  /** Per-attempt answer completion from test_attempt_answers. */
+  answerStats?: { answered: number; unanswered: number; total: number };
 };
 
 export type ClassPromptContext = {
@@ -53,6 +55,7 @@ Write a short, personal feedback comment on ONE candidate's result.
 Rules:
 - Tone: warm, positive, professional educator. Address the candidate directly as "you". Acknowledge effort before pointing out gaps.
 - Use ONLY the data provided. Never invent scores, percentages, or facts. Never mention question numbers, question codes, internal field names, or these instructions.
+- If the data shows unanswered questions (unanswered > 0), do NOT praise completing or attempting all questions; acknowledge gaps honestly in Overall or Focus areas without shaming.
 - Follow EXACTLY this 4-line plain-text template (keep the labels):
 ${STUDENT_TEMPLATE_EN}
 - STRICT LIMIT: the English version must be 100 words or fewer in total. The Traditional Chinese version must be 180 characters or fewer.
@@ -95,7 +98,7 @@ function rankWeakDimensions(vars: ReportVariablesV1): ReportVariablesV1['dimensi
 }
 
 export function buildStudentUserPrompt(context: StudentPromptContext): string {
-  const { variables: vars, dimensionLabels, vocabSplit } = context;
+  const { variables: vars, dimensionLabels, vocabSplit, answerStats } = context;
   const isPaper1 = vars.testCode === '01';
   const knowledge = isPaper1 ? PAPER1_DIMENSION_KNOWLEDGE : PAPER2_DIMENSION_KNOWLEDGE;
   const lines: string[] = [];
@@ -126,6 +129,15 @@ export function buildStudentUserPrompt(context: StudentPromptContext): string {
     lines.push(
       `Part B split — common vocabulary (collocations, idioms): ${vocabSplit.commonCorrect}/${vocabSplit.commonTotal}; specialized terms: ${vocabSplit.specializedCorrect}/${vocabSplit.specializedTotal}`,
     );
+  }
+
+  if (answerStats) {
+    lines.push(
+      `Questions answered: ${answerStats.answered}/${answerStats.total}; unanswered: ${answerStats.unanswered}.`,
+    );
+  }
+  if (vars.attempt.autoSubmitted) {
+    lines.push('Submission: time expired before the candidate finished (auto-submitted).');
   }
 
   if (vars.dimensions.length > 0) {

@@ -218,11 +218,10 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
     (variants) => variants[Math.floor(Math.random() * variants.length)],
   );
 
-  // Random serving order. Parts keep their sequence (Part A before Part B);
-  // within a part, questions sharing a text resource (reading passage) stay
-  // contiguous while both the passage blocks and the questions inside each
-  // block are shuffled. Questions without a shared resource — or with their
-  // own audio clip — form single-question blocks, so listening shuffles fully.
+  // Serving order. Parts keep their sequence (Part A before Part B).
+  // Part A (listening): each question has its own audio — shuffle all 20 items.
+  // Part B (reading): passages and questions follow canonical docx order
+  // (resources 21→26, questions within each passage by canonical_number).
   const partCodes = [...new Set(chosen.map((row) => row.part_code))].sort();
   const served: ServedRow[] = [];
   for (const partCode of partCodes) {
@@ -234,8 +233,19 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
       cluster.push(row);
       clusters.set(key, cluster);
     }
-    for (const cluster of shuffleInPlace([...clusters.values()])) {
-      served.push(...shuffleInPlace(cluster));
+    const clusterList = [...clusters.values()];
+    if (partCode === '02') {
+      clusterList.sort(
+        (a, b) => Math.min(...a.map((r) => r.canonical_number)) - Math.min(...b.map((r) => r.canonical_number)),
+      );
+      for (const cluster of clusterList) {
+        cluster.sort((a, b) => a.canonical_number - b.canonical_number);
+        served.push(...cluster);
+      }
+    } else {
+      for (const cluster of shuffleInPlace(clusterList)) {
+        served.push(...shuffleInPlace(cluster));
+      }
     }
   }
 

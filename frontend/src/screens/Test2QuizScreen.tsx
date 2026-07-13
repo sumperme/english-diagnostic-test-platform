@@ -101,7 +101,7 @@ function SampleSoundButton({ sessionToken }: { sessionToken: string }) {
   );
 }
 
-/** Paper II quiz: fixed canonical order, once-only audio (Part A), passage viewer (Part B). */
+/** Paper II quiz: Part A listening randomized server-side; Part B reading in canonical order. */
 export function Test2QuizScreen({
   candidateInfo,
   session,
@@ -339,6 +339,8 @@ export function Test2QuizScreen({
                 {t.test2.audioCheckOnceReminder}
               </p>
               <p className="text-sm leading-relaxed text-slate-500">{t.test2.audioCheckTimerNote}</p>
+              <p className="text-sm leading-relaxed text-edt-forest">{t.test2.audioCheckPartA}</p>
+              <p className="text-sm leading-relaxed text-edt-forest">{t.test2.audioCheckPartB}</p>
             </div>
 
             <button
@@ -506,11 +508,11 @@ export function Test2QuizScreen({
         <div className="mt-4 rounded-xl border border-[rgba(170,169,90,0.35)] bg-white p-3 text-xs leading-snug text-edt-forest sm:text-sm">
           <p>
             <span className="font-semibold text-edt-forest">{t.quiz.instructionsIntroLabel} </span>
-            {t.test2.instructionsIntro}
+            {t.quiz.instructionsIntro}
           </p>
           <p className="mt-1.5">
-            <span className="font-semibold text-edt-forest">{t.test2.instructionsAudioLabel} </span>
-            {t.test2.instructionsAudio}
+            <span className="font-semibold text-edt-forest">{t.quiz.instructionsNavLabel} </span>
+            {t.quiz.instructionsNav}
           </p>
           <p className="mt-1.5">
             <span className="font-semibold text-edt-forest">{t.quiz.instructionsSubmitLabel} </span>

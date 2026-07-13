@@ -206,9 +206,9 @@ export const messages = {
       backToVoucher: 'Back — use a different voucher',
       userGroup: 'Study group',
       name: 'Full Name',
+      nameRequired: 'Please enter your full name to continue.',
       id: 'Student / Candidate ID',
       optional: 'optional',
-      warning: 'Once you click Start Test, the 60-minute timer will begin immediately and cannot be paused. You will answer 90 multiple-choice questions.',
       start: 'Start Test',
     },
     quiz: {
@@ -362,11 +362,6 @@ export const messages = {
       noRemainingError: 'This voucher has no remaining attempts for this paper.',
       submitError: 'Submission failed. Please check your connection and try again.',
       retry: 'Try again',
-      instructionsIntro:
-        'Select the best answer. All questions carry equal marks. Part A is listening; Part B is reading.',
-      instructionsAudioLabel: 'Listening:',
-      instructionsAudio:
-        'Read the question first. When you are ready, press the play button. Each recording can be played ONLY ONCE.',
       playAudio: 'Play Recording',
       playOnceNote: 'You are allowed to listen to each recording ONLY ONCE.',
       audioLoading: 'Loading audio…',
@@ -380,6 +375,9 @@ export const messages = {
       audioCheckOnceReminder:
         'During the test, each recording is played ONCE only — please make sure your volume is set correctly before you begin.',
       audioCheckTimerNote: 'The 60-minute timer starts only when you click Start Test.',
+      audioCheckPartA: 'Part A – Listening: Each recording can be played ONLY ONCE.',
+      audioCheckPartB:
+        'Part B – Reading: Read each passage carefully in the scrollable panel, then answer the questions below. You may re-read the passage at any time while answering.',
       audioCheckPlay: 'Play Sample Sound',
       audioCheckPlaying: 'Playing sample…',
       audioCheckStart: 'Start Test',
@@ -695,9 +693,9 @@ export const messages = {
       backToVoucher: '返回 — 使用其他測試碼',
       userGroup: '學習群組',
       name: '姓名',
+      nameRequired: '請填寫姓名後方可繼續。',
       id: '學生 / 考生編號',
       optional: '選填',
-      warning: '按下開始測試後，60 分鐘計時會立即開始，不能暫停。你將作答 90 道選擇題。',
       start: '開始測試',
     },
     quiz: {
@@ -846,9 +844,6 @@ export const messages = {
       noRemainingError: '此測試碼在本卷別已無可用次數。',
       submitError: '提交失敗，請檢查網絡連線後重試。',
       retry: '重試',
-      instructionsIntro: '請選出最佳答案。所有題目分數相同。甲部為聆聽，乙部為閱讀。',
-      instructionsAudioLabel: '聆聽：',
-      instructionsAudio: '請先閱讀題目，準備好後按播放鍵。每段錄音只能播放一次。',
       playAudio: '播放錄音',
       playOnceNote: '每段錄音只可聆聽一次。',
       audioLoading: '正在載入錄音…',
@@ -860,6 +855,9 @@ export const messages = {
       audioCheckReplayNote: '測試音效可不限次數重複播放。',
       audioCheckOnceReminder: '正式測試時，每段錄音只會播放一次，請務必在開始前調校好音量。',
       audioCheckTimerNote: '60 分鐘計時將於按下「開始測試」後才開始。',
+      audioCheckPartA: '甲部 — 聆聽：每段錄音只會播放一次。',
+      audioCheckPartB:
+        '乙部 — 閱讀：請仔細閱讀可捲動面板內的篇章，然後作答。作答期間可隨時重新閱讀篇章。',
       audioCheckPlay: '播放測試音效',
       audioCheckPlaying: '播放中…',
       audioCheckStart: '開始測試',

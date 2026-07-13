@@ -77,10 +77,13 @@ export function InfoScreen({
     });
   }, [freshTests]);
 
+  const nameValid = name.trim().length > 0;
+
   const go = (event: FormEvent) => {
     event.preventDefault();
+    if (!nameValid) return;
     onNext({
-      name: name.trim() || 'Anonymous Candidate',
+      name: name.trim(),
       id: cid.trim() || 'N/A',
       testDate: Date.now(),
       mode: 'Online',
@@ -181,11 +184,15 @@ export function InfoScreen({
                   <label className="mb-1.5 block text-sm font-semibold text-edt-forest">{t.info.name}</label>
                   <input
                     type="text"
+                    required
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. CHAN TAI MAN JACKIE"
                     className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-edt-forest outline-none transition-colors focus:border-edt-gold"
                   />
+                  {!nameValid ? (
+                    <p className="mt-1.5 text-xs text-edt-olive">{t.info.nameRequired}</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-edt-forest">
@@ -199,13 +206,10 @@ export function InfoScreen({
                     className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-edt-forest outline-none transition-colors focus:border-edt-gold"
                   />
                 </div>
-                <div className="flex items-start gap-3 rounded-xl border border-[rgba(170,169,90,0.35)] bg-edt-indigo/10 px-4 py-3">
-                  <span className="mt-0.5 text-edt-gold">!</span>
-                  <p className="text-sm leading-relaxed text-edt-olive">{t.info.warning}</p>
-                </div>
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-edt-forest py-3.5 text-base font-bold uppercase tracking-[0.1em] text-edt-neon transition-colors hover:bg-[#243b37]"
+                  disabled={!nameValid}
+                  className="w-full rounded-xl bg-edt-forest py-3.5 text-base font-bold uppercase tracking-[0.1em] text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {t.info.start}
                 </button>
