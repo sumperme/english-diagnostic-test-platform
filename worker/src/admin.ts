@@ -465,6 +465,64 @@ export async function adminListUserGroups(_request: Request, env: AdminEnv, orig
   return json({ userGroups: withDefault }, undefined, origin);
 }
 
+type AiUsageLogRow = {
+  id: number;
+  created_at: number;
+  feature_type: string;
+  voucher_code: string | null;
+  teacher_key: string | null;
+  test_code: string | null;
+  attempt_id: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+};
+
+export async function adminAiUsage(request: Request, env: AdminEnv, origin: string | undefined, json: JsonResponder) {
+  const url = new URL(request.url);
+  const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') ?? 500)));
+  const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0));
+
+  const totals = await env.DB.prepare(
+    'SELECT COUNT(*) AS total_calls, COALESCE(SUM(estimated_cost_usd), 0) AS total_spending FROM ai_api_usage_logs',
+  ).first<{ total_calls: number; total_spending: number }>();
+
+  const result = await env.DB.prepare(
+    `SELECT id, created_at, feature_type, voucher_code, teacher_key, test_code, attempt_id,
+            prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd
+     FROM ai_api_usage_logs
+     ORDER BY created_at DESC
+     LIMIT ? OFFSET ?`,
+  )
+    .bind(limit, offset)
+    .all<AiUsageLogRow>();
+
+  return json(
+    {
+      totalCalls: Number(totals?.total_calls ?? 0),
+      totalSpendingUsd: Math.round(Number(totals?.total_spending ?? 0) * 1_000_000) / 1_000_000,
+      logs: (result.results ?? []).map((row) => ({
+        id: row.id,
+        createdAt: row.created_at,
+        featureType: row.feature_type,
+        voucherCode: row.voucher_code,
+        teacherKey: row.teacher_key,
+        testCode: row.test_code,
+        attemptId: row.attempt_id,
+        promptTokens: Number(row.prompt_tokens),
+        completionTokens: Number(row.completion_tokens),
+        totalTokens: Number(row.total_tokens),
+        estimatedCostUsd: Number(row.estimated_cost_usd),
+      })),
+      limit,
+      offset,
+    },
+    undefined,
+    origin,
+  );
+}
+
 export async function handleAdminRequest(
   request: Request,
   env: AdminEnv,
@@ -520,6 +578,10 @@ export async function handleAdminRequest(
   // User groups list for admin UI dropdowns
   if (url.pathname === '/api/admin/user-groups' && request.method === 'GET') {
     return adminListUserGroups(request, env, origin, json);
+  }
+
+  if (url.pathname === '/api/admin/ai-usage' && request.method === 'GET') {
+    return adminAiUsage(request, env, origin, json);
   }
 
   return json({ error: 'Not found' }, { status: 404 }, origin);

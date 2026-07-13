@@ -22,6 +22,7 @@ Each voucher grants a configurable number of attempts **per paper**. Results map
 - **Voucher access control** — codes are batch-generated in the admin console, grouped by user group (class), with per-test usage tracking.
 - **DB-backed test bank** — questions live in Cloudflare D1 under a unified `TT-PP-SS-GGG-QQ` ID scheme (test / part / dimension / group / variant); the Worker serves one random variant per question group and scores server-side (Paper II attempts API).
 - **Reports** — on-screen bilingual report (radar chart, CEFR bands, question review) plus a server-rendered PDF (`pdf-lib` in the Worker, Montserrat + Noto Serif TC from R2, FIFO cache of the latest 20 PDFs).
+- **AI tutor feedback (DeepSeek)** — candidates generate bilingual (~100-word) personalized feedback once per completed attempt; teachers generate quota-limited class overviews; feedback appears on results screens and in server-rendered PDFs; the admin console shows API call count and estimated spend.
 - **Teacher dashboard** — cohort statistics, score distributions, per-dimension and per-question correct rates for the teacher's user group.
 - **Admin console** — voucher CRUD, batch generation, per-test usage columns, teacher credential management.
 - **Bilingual UI** — English and Traditional Chinese (zh-HK) throughout, including PDFs.
@@ -37,6 +38,7 @@ Cloudflare Worker (worker/src/index.ts)   Static assets (frontend/dist via ASSET
    ├─ Attempts API: random variant selection, server-side scoring (Paper II)
    ├─ Legacy submit + dual-write into unified attempt tables (Paper I)
    ├─ Teacher + admin APIs
+   ├─ AI feedback (DeepSeek): student feedback + teacher class overviews
    ├─ Authenticated audio streaming  ──►  R2 (edt-assets: audio/, fonts/, pdf-cache/)
    └─ PDF report rendering (pdf-lib) ──►  D1 (edt-diagnostic: test bank + attempts + reports)
 ```
@@ -51,7 +53,7 @@ Cloudflare Worker (worker/src/index.ts)   Static assets (frontend/dist via ASSET
 | ---- | ------- |
 | `frontend/` | React + Vite SPA (screens, components, i18n dictionaries, client scoring for Paper I) |
 | `worker/` | Cloudflare Worker API (attempts, scoring, reports/PDF, admin, teacher, asset streaming) |
-| `migrations/` | D1 migrations `0001`–`0010` (legacy tables → unified test bank + both papers' content) |
+| `migrations/` | D1 migrations `0001`–`0013` (legacy tables → unified test bank + both papers' content + AI feedback + usage logging) |
 | `scripts/` | PowerShell + Node helpers: local preview, publish, asset upload, remote DB migrate, seed generators |
 | `wrangler.toml` | Production Worker config (D1 + R2 bindings, SPA assets) |
 | `worker/wrangler.toml` | Local dev Worker config (same bindings, state under `worker/.wrangler/state`) |
@@ -87,6 +89,13 @@ After changing audio or fonts:
 .\scripts\upload-assets.ps1       # upload MP3s + fonts to remote R2
 ```
 
+For AI features (production only; never commit the key):
+
+```powershell
+npx wrangler secret put DEEPSEEK_API_KEY
+# Local dev: create worker/.dev.vars with DEEPSEEK_API_KEY=sk-...
+```
+
 Full guides: [PUBLISH_UI.md](PUBLISH_UI.md) (publish workflow), [CLOUDFLARE_DEPLOYMENT.md](CLOUDFLARE_DEPLOYMENT.md) (initial setup and troubleshooting).
 
 ## Documentation
@@ -102,7 +111,7 @@ Full guides: [PUBLISH_UI.md](PUBLISH_UI.md) (publish workflow), [CLOUDFLARE_DEPL
 
 ## Security notes
 
-- Voucher codes (`Evouchers.txt`), database backups (`db_backup/`), and `.dev.vars` are never committed.
+- Voucher codes (`Evouchers.txt`), database backups (`db_backup/`), `.dev.vars`, and `DEEPSEEK_API_KEY` are never committed.
 - Listening audio is never publicly reachable; the Worker streams it only to authenticated sessions.
 - Correct answers and transcripts never leave the server before an attempt is completed.
 

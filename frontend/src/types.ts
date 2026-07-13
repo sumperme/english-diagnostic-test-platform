@@ -243,6 +243,28 @@ export type AdminVoucherList = {
   offset: number;
 };
 
+export type AiUsageLogEntry = {
+  id: number;
+  createdAt: number;
+  featureType: 'student_feedback' | 'class_overview';
+  voucherCode: string | null;
+  teacherKey: string | null;
+  testCode: string | null;
+  attemptId: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+};
+
+export type AdminAiUsage = {
+  totalCalls: number;
+  totalSpendingUsd: number;
+  logs: AiUsageLogEntry[];
+  limit: number;
+  offset: number;
+};
+
 export type TeacherSession = {
   teacherKey: string;
   userGroup: string;

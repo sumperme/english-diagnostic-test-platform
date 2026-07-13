@@ -26,6 +26,7 @@ import {
   type BilingualFeedback,
   type ClassPromptContext,
 } from './aiPrompts';
+import { logAiUsage, type AiUsageContext } from './aiUsageLog';
 import { REPORT_STRINGS } from './reportI18n';
 import { authorizeAttemptAccess } from './reports';
 import type { ReportVariablesV1 } from './reportVariables';
@@ -181,6 +182,16 @@ const feedbackOf = (row: AiReportRow): BilingualFeedback | null =>
 
 async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<void> {
   try {
+    const meta = await env.DB.prepare(
+      `SELECT a.id, t.test_code, u.external_ref AS voucher_code
+       FROM test_attempts a
+       JOIN tests t ON t.id = a.test_id
+       LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.id = ?`,
+    )
+      .bind(attemptId)
+      .first<{ id: string; test_code: string; voucher_code: string | null }>();
+
     const report = await env.DB.prepare('SELECT variables FROM attempt_reports WHERE test_attempt_id = ?')
       .bind(attemptId)
       .first<{ variables: string }>();
@@ -195,7 +206,14 @@ async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<voi
       vocabSplit,
     });
 
-    const feedback = await generateWithRetries(env, STUDENT_SYSTEM_PROMPT, userPrompt);
+    const usageContext: AiUsageContext = {
+      featureType: 'student_feedback',
+      attemptId,
+      testCode: meta?.test_code ?? variables.testCode,
+      voucherCode: meta?.voucher_code ?? null,
+    };
+
+    const feedback = await generateWithRetries(env, STUDENT_SYSTEM_PROMPT, userPrompt, usageContext);
 
     await env.DB.prepare(
       `UPDATE attempt_reports
@@ -277,7 +295,11 @@ async function generateClassOverview(request: Request, env: AiEnv, origin: strin
   try {
     // Synchronous generation: DeepSeek latency is I/O wall-clock, which the
     // paid Workers plan does not bill or cap as CPU time.
-    const overview = await generateWithRetries(env, CLASS_SYSTEM_PROMPT, buildClassUserPrompt(context));
+    const usageContext: AiUsageContext = {
+      featureType: 'class_overview',
+      teacherKey: teacher.key,
+    };
+    const overview = await generateWithRetries(env, CLASS_SYSTEM_PROMPT, buildClassUserPrompt(context), usageContext);
     const now = Date.now();
     await env.DB.prepare(
       'INSERT INTO class_overviews (teacher_key, user_group, content_en, content_zh, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -388,25 +410,38 @@ async function buildClassContext(env: AiEnv, userGroup: string): Promise<ClassPr
 // DeepSeek client with silent retries
 // ---------------------------------------------------------------------------
 
-async function generateWithRetries(env: AiEnv, systemPrompt: string, userPrompt: string): Promise<BilingualFeedback> {
+async function generateWithRetries(
+  env: AiEnv,
+  systemPrompt: string,
+  userPrompt: string,
+  usageContext?: AiUsageContext,
+): Promise<BilingualFeedback> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[Math.min(attempt - 1, BACKOFF_MS.length - 1)]));
     }
     try {
-      let feedback = await callDeepSeek(env, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ]);
-      if (exceedsLimits(feedback)) {
-        // One corrective re-prompt, then a deterministic sentence-boundary trim.
-        feedback = await callDeepSeek(env, [
+      let feedback = await callDeepSeek(
+        env,
+        [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
-          { role: 'assistant', content: JSON.stringify(feedback) },
-          { role: 'user', content: CORRECTIVE_INSTRUCTION },
-        ]);
+        ],
+        usageContext,
+      );
+      if (exceedsLimits(feedback)) {
+        // One corrective re-prompt, then a deterministic sentence-boundary trim.
+        feedback = await callDeepSeek(
+          env,
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+            { role: 'assistant', content: JSON.stringify(feedback) },
+            { role: 'user', content: CORRECTIVE_INSTRUCTION },
+          ],
+          usageContext,
+        );
       }
       return enforceOutputLimits(feedback);
     } catch (error) {
@@ -419,6 +454,7 @@ async function generateWithRetries(env: AiEnv, systemPrompt: string, userPrompt:
 async function callDeepSeek(
   env: AiEnv,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  usageContext?: AiUsageContext,
 ): Promise<BilingualFeedback> {
   const response = await fetch(DEEPSEEK_URL, {
     method: 'POST',
@@ -440,7 +476,10 @@ async function callDeepSeek(
     throw new Error(`DeepSeek HTTP ${response.status}`);
   }
 
-  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  };
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new Error('DeepSeek returned no content');
 
@@ -448,5 +487,10 @@ async function callDeepSeek(
   const en = typeof parsed.en === 'string' ? parsed.en.trim() : '';
   const zhHK = typeof parsed.zhHK === 'string' ? parsed.zhHK.trim() : '';
   if (!en || !zhHK) throw new Error('DeepSeek response missing en/zhHK fields');
+
+  if (usageContext && payload.usage) {
+    await logAiUsage(env, DEEPSEEK_MODEL, payload.usage, usageContext);
+  }
+
   return { en, zhHK };
 }

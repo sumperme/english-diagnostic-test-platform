@@ -1,4 +1,5 @@
 import type {
+  AdminAiUsage,
   AdminSummary,
   AdminTeacherCredential,
   AdminTeacherCredentialList,
@@ -393,4 +394,17 @@ export async function deleteAdminTeacherCredential(key: string): Promise<{ ok: b
     `/api/admin/teacher-credentials/${encodeURIComponent(key)}`,
     { method: 'DELETE' },
   );
+}
+
+// --- Admin: AI usage logging ---
+
+export async function fetchAdminAiUsage(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<AdminAiUsage> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  if (params?.offset != null) search.set('offset', String(params.offset));
+  const query = search.toString();
+  return adminFetch<AdminAiUsage>(`/api/admin/ai-usage${query ? `?${query}` : ''}`);
 }

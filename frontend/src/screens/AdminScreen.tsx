@@ -9,12 +9,13 @@ import {
   fetchAdminTeacherCredentials,
   fetchAdminUserGroups,
   fetchAdminVouchers,
+  fetchAdminAiUsage,
   loadAdminPassword,
   saveAdminPassword,
   updateAdminTeacherCredential,
   updateAdminVoucher,
 } from '../lib/api';
-import type { AdminSummary, AdminTeacherCredential, AdminVoucher } from '../types';
+import type { AdminAiUsage, AdminSummary, AdminTeacherCredential, AdminVoucher } from '../types';
 
 // ─── Voucher code generation ──────────────────────────────────────────────────
 
@@ -123,6 +124,24 @@ function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential
   return draft.remark !== (cred.remark ?? '') || draft.aiUsesAllowed !== (cred.aiUsesAllowed ?? 20);
 }
 
+function formatPaperLabel(testCode: string | null): string {
+  if (testCode === '01') return 'Paper I';
+  if (testCode === '02') return 'Paper II';
+  return '—';
+}
+
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(4)}`;
+}
+
+function formatLogTime(ms: number): string {
+  return new Date(ms).toLocaleString();
+}
+
+function formatFeatureType(type: string): string {
+  return type === 'class_overview' ? 'Class Overview' : 'Student Feedback';
+}
+
 // ─── Main AdminScreen ─────────────────────────────────────────────────────────
 
 export function AdminScreen() {
@@ -162,6 +181,9 @@ export function AdminScreen() {
   // Delete confirm
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
 
+  // AI usage logging
+  const [aiUsage, setAiUsage] = useState<AdminAiUsage | null>(null);
+
   // ── Load data ─────────────────────────────────────────────────────────────
 
   const loadUserGroups = useCallback(async () => {
@@ -175,13 +197,15 @@ export function AdminScreen() {
     setLoading(true);
     setMessage('');
     try {
-      const [nextSummary, list] = await Promise.all([
+      const [nextSummary, list, usage] = await Promise.all([
         fetchAdminSummary(),
         fetchAdminVouchers({ q: search, status, limit: 200 }),
+        fetchAdminAiUsage({ limit: 500 }),
       ]);
       setSummary(nextSummary);
       setVouchers(list.vouchers);
       setDrafts(Object.fromEntries(list.vouchers.map((v) => [v.code, draftFromVoucher(v)])));
+      setAiUsage(usage);
     } catch {
       setMessage('Failed to load voucher data. Check password and try again.');
       setAuthenticated(false);
@@ -642,6 +666,73 @@ export function AdminScreen() {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* DeepSeek API Spending */}
+            <section className="rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">DeepSeek API Spending</h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Incremental log of successful DeepSeek API calls (student feedback and teacher class overviews).
+                  </p>
+                </div>
+                <RefreshButton loading={loading} onClick={() => void loadVoucherData()} />
+              </div>
+
+              {aiUsage ? (
+                <div className="mb-4 flex flex-wrap gap-6">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total API calls</p>
+                    <p className="mt-1 text-2xl font-bold text-edt-forest">{aiUsage.totalCalls}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total spending (USD)</p>
+                    <p className="mt-1 text-2xl font-bold text-edt-forest">{formatUsd(aiUsage.totalSpendingUsd)}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-100">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2">Time</th>
+                      <th className="px-3 py-2 text-right">Cost (USD)</th>
+                      <th className="px-3 py-2 text-right">Tokens</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Actor</th>
+                      <th className="px-3 py-2">Paper</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!aiUsage || aiUsage.logs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
+                          No API usage recorded yet.
+                        </td>
+                      </tr>
+                    ) : null}
+                    {aiUsage?.logs.map((log) => (
+                      <tr key={log.id} className="border-b border-slate-100 align-top">
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">{formatLogTime(log.createdAt)}</td>
+                        <td className="px-3 py-2 text-right text-xs font-mono">{formatUsd(log.estimatedCostUsd)}</td>
+                        <td className="px-3 py-2 text-right text-xs">
+                          <span className="font-semibold">{log.totalTokens}</span>
+                          <span className="block text-[10px] text-slate-400">
+                            {log.promptTokens} in / {log.completionTokens} out
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs">{formatFeatureType(log.featureType)}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {log.voucherCode ?? log.teacherKey ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs">{formatPaperLabel(log.testCode)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
