@@ -18,6 +18,7 @@ import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { REPORT_STRINGS, type ReportLang } from './reportI18n';
 import type { AttemptAnswerRow, ReportVariablesV1 } from './reportVariables';
+import { stripSpeakingUiBoilerplate } from './paper3Prompt';
 
 type ReportsEnv = {
   DB: D1Database;
@@ -133,7 +134,9 @@ export async function handleReportRequest(
   const pdfFilename = reportPdfFilename(attempt.external_ref, variables.testCode, attemptId);
   // ai_generated_at busts the cache so PDFs downloaded after generation include
   // the feedback instead of serving the stale pre-feedback copy.
-  const cacheKey = `${attemptId}:${lang}:${report.report_version}:ai${report.ai_generated_at ?? 0}`;
+  // pdfLayout bumps when Answer Review / paragraph layout changes (e.g. newline fix).
+  const pdfLayout = 4;
+  const cacheKey = `${attemptId}:${lang}:${report.report_version}:ai${report.ai_generated_at ?? 0}:L${pdfLayout}`;
 
   // Cache hit: stream straight from R2.
   const indexRow = await env.DB.prepare('SELECT r2_key FROM pdf_cache_index WHERE cache_key = ?')
@@ -148,7 +151,8 @@ export async function handleReportRequest(
 
   const answers = await env.DB.prepare(
     `SELECT a.question_code, a.selected_option, a.is_correct, a.display_order,
-            g.canonical_number, p.part_code, p.skill AS part_skill,
+            a.text_response, a.ai_band_key, a.ai_mark_json,
+            g.canonical_number, g.response_type, p.part_code, p.skill AS part_skill,
             d.key AS dimension_key,
             q.prompt_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer
      FROM test_attempt_answers a
@@ -165,7 +169,7 @@ export async function handleReportRequest(
 
   // Store + FIFO eviction. The object key mirrors the cache key's AI state so
   // pre- and post-feedback renders never overwrite each other.
-  const r2Key = `pdf-cache/${attemptId}-${lang}-${report.report_version}-ai${report.ai_generated_at ?? 0}.pdf`;
+  const r2Key = `pdf-cache/${attemptId}-${lang}-${report.report_version}-ai${report.ai_generated_at ?? 0}-L${pdfLayout}.pdf`;
   await env.R2_ASSETS.put(r2Key, bytes, { httpMetadata: { contentType: 'application/pdf' } });
   await env.DB.prepare(
     'INSERT OR REPLACE INTO pdf_cache_index (cache_key, test_attempt_id, r2_key, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -293,13 +297,17 @@ async function renderReportPdf(
     if (y - needed < MARGIN + 24) newPage();
   };
   const text = (value: string, x: number, size: number, opts: { bold?: boolean; color?: ReturnType<typeof rgb> } = {}) => {
-    const font = pick(value, opts.bold ?? false);
-    page.drawText(value, { x, y, size, font, color: opts.color ?? INK });
+    // pdf-lib drawText treats \\n as multi-line using page.lineHeight (default 24)
+    // without advancing our cursor — never pass newlines here.
+    const safe = value.replace(/[\r\n]+/g, ' ').trimEnd();
+    if (!safe) return;
+    const font = pick(safe, opts.bold ?? false);
+    page.drawText(safe, { x, y, size, font, color: opts.color ?? INK });
   };
   const wrap = (value: string, size: number, bold: boolean, maxWidth: number): string[] => {
     const font = pick(value, bold);
     const isCjk = CJK_RE.test(value);
-    const tokens = isCjk ? Array.from(value) : value.split(' ');
+    const tokens = isCjk ? Array.from(value) : value.split(/\s+/).filter(Boolean);
     const joiner = isCjk ? '' : ' ';
     const lines: string[] = [];
     let current = '';
@@ -315,12 +323,32 @@ async function renderReportPdf(
     if (current) lines.push(current);
     return lines;
   };
-  const paragraph = (value: string, x: number, size: number, opts: { bold?: boolean; color?: ReturnType<typeof rgb>; maxWidth?: number; lineGap?: number } = {}) => {
+  const paragraph = (
+    value: string,
+    x: number,
+    size: number,
+    opts: { bold?: boolean; color?: ReturnType<typeof rgb>; maxWidth?: number; lineGap?: number } = {},
+  ) => {
     const maxWidth = opts.maxWidth ?? PAGE_W - MARGIN - x;
-    for (const line of wrap(value, size, opts.bold ?? false, maxWidth)) {
-      ensure(size + 4);
-      text(line, x, size, opts);
-      y -= size + (opts.lineGap ?? 4);
+    const lineStep = size + (opts.lineGap ?? 4);
+    // Split hard breaks first. Paper III prompts/essays contain \\n; if left inside
+    // a drawText call, pdf-lib stacks lines at page.lineHeight while we only move
+    // `y` once — causing the Answer Review section to overlap.
+    const blocks = String(value ?? '')
+      .replace(/\r\n/g, '\n')
+      .split('\n');
+    for (const block of blocks) {
+      const trimmed = block.trim();
+      if (!trimmed) {
+        ensure(lineStep);
+        y -= lineStep * 0.6;
+        continue;
+      }
+      for (const line of wrap(trimmed, size, opts.bold ?? false, maxWidth)) {
+        ensure(lineStep + 2);
+        text(line, x, size, opts);
+        y -= lineStep;
+      }
     }
   };
   const sectionHeading = (label: string) => {
@@ -418,8 +446,8 @@ async function renderReportPdf(
     }
   }
 
-  // --- Dimension profile (radar + table, axis count adapts to the test) ---
-  if (vars.dimensions.length > 0) {
+  // --- Dimension profile (radar + table). Paper III has no radar — skip entirely. ---
+  if (vars.testCode !== '03' && vars.dimensions.length > 0) {
     const dimensions = [...vars.dimensions].sort((a, b) =>
       (a.partCode + a.dimensionCode).localeCompare(b.partCode + b.dimensionCode),
     );
@@ -559,13 +587,14 @@ async function renderReportPdf(
     y -= 12;
   }
 
-  // --- Answer review (full MCQ feedback; question codes are backend-only) ---
+  // --- Answer review ---
   if (answers.length > 0) {
     sectionHeading(strings.answerReview);
     const isTest1 = vars.testCode === '01';
+    const isTest3 = vars.testCode === '03';
     const questionLabel = (row: AttemptAnswerRow): string | null => {
-      if (!isTest1) return null; // Test 2 context comes from the part headers
       if (row.dimension_key) return strings.dimensionLabels[row.dimension_key] ?? row.dimension_key;
+      if (!isTest1) return null;
       return row.canonical_number <= 75 ? strings.vocabCommon : strings.vocabSpecialized;
     };
     const optionTexts = (row: AttemptAnswerRow): Record<string, string> => ({
@@ -596,18 +625,79 @@ async function renderReportPdf(
         y -= 14;
       }
 
-      // Keep the question number, label, and stem together across page breaks.
       ensure(44);
-      const qHeader = `Q${row.display_order ?? row.canonical_number}`;
-      text(qHeader, MARGIN, 9.5, { bold: true });
+      const qNum = row.display_order ?? row.canonical_number;
       const label = questionLabel(row);
-      if (label) {
-        const headerWidth = pick(qHeader, true).widthOfTextAtSize(qHeader, 9.5);
-        text(label, MARGIN + headerWidth + 8, 8, { color: OLIVE });
+      const qHeader = isTest3 && label ? `Question ${qNum}: ${label}` : `Q${qNum}`;
+      if (isTest3) {
+        paragraph(qHeader, MARGIN, 9.5, { bold: true, lineGap: 3 });
+      } else {
+        text(qHeader, MARGIN, 9.5, { bold: true });
+        if (label) {
+          const headerWidth = pick(`Q${qNum}`, true).widthOfTextAtSize(`Q${qNum}`, 9.5);
+          text(label, MARGIN + headerWidth + 8, 8, { color: OLIVE });
+        }
+        y -= 13;
       }
-      y -= 13;
-      paragraph(row.prompt_text, MARGIN, 9, { lineGap: 3 });
-      y -= 1;
+      const reviewPrompt = isTest3
+        ? stripSpeakingUiBoilerplate(row.prompt_text ?? '')
+        : (row.prompt_text ?? '');
+      if (reviewPrompt) {
+        paragraph(reviewPrompt, MARGIN, 9, { lineGap: 3 });
+        y -= 2;
+      }
+
+      if (isTest3) {
+        type Paper3PdfMark = {
+          unanswered?: boolean;
+          strengths?: string[];
+          improvements?: string[];
+          cefrLabel?: string;
+        };
+        let mark: Paper3PdfMark | null = null;
+        try {
+          mark = row.ai_mark_json ? (JSON.parse(row.ai_mark_json) as Paper3PdfMark) : null;
+        } catch {
+          mark = null;
+        }
+        const unanswered = Boolean(mark?.unanswered) || !row.ai_band_key;
+        if (unanswered) {
+          ensure(12);
+          text(strings.unanswered, MARGIN + 14, 8.5, { color: OLIVE, bold: true });
+          y -= 14;
+        } else {
+          const bandLabel = mark?.cefrLabel ?? row.ai_band_key ?? '';
+          if (bandLabel) {
+            ensure(12);
+            text(`${strings.cefrBand}: ${bandLabel}`, MARGIN + 14, 8.5, { bold: true, color: FOREST });
+            y -= 12;
+          }
+          if (row.response_type === 'writing' && row.text_response?.trim()) {
+            const excerpt =
+              row.text_response.trim().length > 400
+                ? `${row.text_response.trim().slice(0, 400)}…`
+                : row.text_response.trim();
+            paragraph(excerpt, MARGIN + 14, 8.5, { lineGap: 3 });
+            y -= 4;
+          }
+          if (mark?.strengths?.length) {
+            paragraph(`${strings.strengths}: ${mark.strengths.join('; ')}`, MARGIN + 14, 8, {
+              color: GREEN,
+              lineGap: 3,
+            });
+            y -= 2;
+          }
+          if (mark?.improvements?.length) {
+            paragraph(`${strings.improvements}: ${mark.improvements.join('; ')}`, MARGIN + 14, 8, {
+              color: GOLD,
+              lineGap: 3,
+            });
+            y -= 2;
+          }
+        }
+        y -= 10;
+        continue;
+      }
 
       const options = optionTexts(row);
       for (const key of ['A', 'B', 'C', 'D']) {

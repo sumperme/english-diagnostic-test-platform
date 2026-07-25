@@ -43,6 +43,8 @@ export type ReportStrings = {
   correct: string;
   incorrect: string;
   unanswered: string;
+  strengths: string;
+  improvements: string;
   yourAnswerMark: string;
   correctAnswerMark: string;
   generatedAt: string;
@@ -67,6 +69,7 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     subtitle: {
       '01': 'Paper I — Grammar & Vocabulary',
       '02': 'Paper II — Listening & Reading',
+      '03': 'Paper III — Speaking & Writing',
     },
     candidate: 'Candidate',
     name: 'Name',
@@ -103,6 +106,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     correct: 'Correct',
     incorrect: 'Incorrect',
     unanswered: 'Not answered',
+    strengths: 'Strengths',
+    improvements: 'Improvements',
     yourAnswerMark: 'Your answer',
     correctAnswerMark: 'Correct answer',
     generatedAt: 'Generated',
@@ -167,6 +172,11 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
         recommendation:
           'Maintain your outstanding standard by engaging with advanced academic literature, lectures, and professional discourse.',
       },
+      b1b2: {
+        headline: 'Developing speaking and writing at B1/B2',
+        recommendation:
+          'Practise sustained turns and organised paragraphs on familiar and abstract topics; expand range of grammar and vocabulary.',
+      },
     },
     dimensionLabels: {
       tenses: 'Tenses',
@@ -185,6 +195,16 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       listeningC1C2: 'Listening — C1/C2 items',
       readingB2: 'Reading — B2 items',
       readingC1C2: 'Reading — C1/C2 items',
+      describingExperience: 'Describing Personal Experience',
+      futureScenario: 'Future Scenario and Speculation',
+      explainingProcess: 'Explaining a Process',
+      abstractConcept: 'Explaining an Abstract Concept',
+      explainingOpinion: 'Explaining an Opinion or Decision',
+      comparingOptions: 'Comparing and Evaluating Options',
+      interpretingData: 'Interpreting Data or a Short Text',
+      persuadingEvent: 'Persuading Others to Take Part in an Event',
+      summaryResponse: 'Summary Response',
+      argumentativeEssay: 'Argumentative Essay',
     },
     dimensionShorts: {
       tenses: 'Tenses',
@@ -203,6 +223,16 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       listeningC1C2: 'Listening C1/C2',
       readingB2: 'Reading B2',
       readingC1C2: 'Reading C1/C2',
+      describingExperience: 'Experience',
+      futureScenario: 'Future',
+      explainingProcess: 'Process',
+      abstractConcept: 'Abstract',
+      explainingOpinion: 'Opinion',
+      comparingOptions: 'Compare',
+      interpretingData: 'Data',
+      persuadingEvent: 'Persuade',
+      summaryResponse: 'Summary',
+      argumentativeEssay: 'Essay',
     },
     vocabCommon: 'Vocabulary (Common)',
     vocabSpecialized: 'Vocabulary (Specialized Terms)',
@@ -211,6 +241,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       vocabulary: 'Vocabulary',
       listening: 'Listening',
       reading: 'Reading',
+      speaking: 'Speaking',
+      writing: 'Writing',
     },
   },
   'zh-HK': {
@@ -218,6 +250,7 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     subtitle: {
       '01': '卷一 — 語法及詞彙',
       '02': '卷二 — 聆聽及閱讀',
+      '03': '卷三 — 說話及寫作',
     },
     candidate: '考生',
     name: '姓名',
@@ -254,6 +287,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
     correct: '正確',
     incorrect: '錯誤',
     unanswered: '未作答',
+    strengths: '優點',
+    improvements: '改進建議',
     yourAnswerMark: '你的答案',
     correctAnswerMark: '正確答案',
     generatedAt: '產生時間',
@@ -307,6 +342,10 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
         headline: '已全面具備學術及專業理解能力',
         recommendation: '建議持續接觸進階學術文獻、講座及專業討論，保持卓越水平。',
       },
+      b1b2: {
+        headline: '說話及寫作處於 B1/B2 發展階段',
+        recommendation: '多練習就熟悉及抽象主題作持續發言與有組織段落，並擴充語法與詞彙範圍。',
+      },
     },
     dimensionLabels: {
       tenses: '時態',
@@ -325,6 +364,16 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       listeningC1C2: '聆聽 — C1/C2 題目',
       readingB2: '閱讀 — B2 題目',
       readingC1C2: '閱讀 — C1/C2 題目',
+      describingExperience: '描述個人經歷',
+      futureScenario: '未來情境與推測',
+      explainingProcess: '解釋過程',
+      abstractConcept: '解釋抽象概念',
+      explainingOpinion: '解釋意見或決定',
+      comparingOptions: '比較與評估選項',
+      interpretingData: '詮釋數據或短文',
+      persuadingEvent: '說服他人參與活動',
+      summaryResponse: '撮要回應',
+      argumentativeEssay: '議論文章',
     },
     dimensionShorts: {
       tenses: '時態',
@@ -343,6 +392,16 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       listeningC1C2: '聆聽 C1/C2',
       readingB2: '閱讀 B2',
       readingC1C2: '閱讀 C1/C2',
+      describingExperience: '經歷',
+      futureScenario: '未來',
+      explainingProcess: '過程',
+      abstractConcept: '抽象',
+      explainingOpinion: '意見',
+      comparingOptions: '比較',
+      interpretingData: '數據',
+      persuadingEvent: '說服',
+      summaryResponse: '撮要',
+      argumentativeEssay: '議論',
     },
     vocabCommon: '詞彙（常用）',
     vocabSpecialized: '詞彙（專門術語）',
@@ -351,6 +410,8 @@ export const REPORT_STRINGS: Record<ReportLang, ReportStrings> = {
       vocabulary: '詞彙',
       listening: '聆聽',
       reading: '閱讀',
+      speaking: '說話',
+      writing: '寫作',
     },
   },
 };

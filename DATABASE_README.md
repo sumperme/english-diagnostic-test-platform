@@ -53,7 +53,7 @@ Every question variant has a unique string code stored in `questions.question_co
 
 | Segment | Width | Meaning | Values |
 |---------|-------|---------|--------|
-| `TT` | 2 | Test ID | `01` = Test 1 (Grammar & Vocabulary), `02` = Paper II (Listening & Reading) |
+| `TT` | 2 | Test ID | `01` = Test 1 (Grammar & Vocabulary), `02` = Paper II (Listening & Reading), `03` = Paper III (Speaking & Writing) |
 | `PP` | 2 | Part ID | `01` = Part A, `02` = Part B |
 | `SS` | 2 | Sub-part / dimension code | `01`–`12` = Test 1 grammar dimensions; `01` = B2 items, `02` = C1/C2 items (Test 2); `00` = no dimension |
 | `GGG` | 3 | Question group ID, **global per test** by canonical number | Test 1: `001`–`090`; Test 2: `001`–`045` |

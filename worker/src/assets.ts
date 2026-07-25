@@ -1,8 +1,7 @@
-// Authenticated R2 asset streaming: GET /api/assets/audio/<key>
-// Listening clips must never be publicly reachable (test integrity), so access
-// requires an active quiz session (Bearer token) or a teacher key.
-// shared_resources.content_url stores these route paths, e.g.
-// /api/assets/audio/test-02/20260701_01.mp3 -> R2 object audio/test-02/20260701_01.mp3
+// Authenticated R2 asset streaming:
+//   GET /api/assets/audio/<key>      -> R2 audio/<key>   (prompt / listening clips)
+//   GET /api/assets/responses/<key>  -> R2 responses/<key> (Paper III student recordings)
+// Access requires an active quiz session (Bearer) or a teacher key.
 
 type AssetsEnv = {
   DB: D1Database;
@@ -10,6 +9,7 @@ type AssetsEnv = {
 };
 
 const AUDIO_PREFIX = '/api/assets/audio/';
+const RESPONSES_PREFIX = '/api/assets/responses/';
 
 async function hasActiveSession(request: Request, env: AssetsEnv): Promise<boolean> {
   const auth = request.headers.get('Authorization') ?? '';
@@ -30,31 +30,28 @@ async function hasTeacherKey(request: Request, env: AssetsEnv): Promise<boolean>
   return !!row;
 }
 
-export async function handleAssetRequest(
+async function streamR2Object(
   request: Request,
   env: AssetsEnv,
   origin: string | undefined,
   json: (body: unknown, init?: ResponseInit, origin?: string) => Response,
-): Promise<Response | null> {
-  const url = new URL(request.url);
-  if (!url.pathname.startsWith(AUDIO_PREFIX)) return null;
-  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 }, origin);
-
-  const key = `audio/${decodeURIComponent(url.pathname.slice(AUDIO_PREFIX.length))}`;
-  if (key.includes('..')) return json({ error: 'Invalid key' }, { status: 400 }, origin);
+  r2Key: string,
+  defaultContentType: string,
+): Promise<Response> {
+  if (r2Key.includes('..')) return json({ error: 'Invalid key' }, { status: 400 }, origin);
 
   const authorized = (await hasActiveSession(request, env)) || (await hasTeacherKey(request, env));
   if (!authorized) return json({ error: 'Unauthorized' }, { status: 401 }, origin);
 
   const rangeHeader = request.headers.get('Range');
   const object = rangeHeader
-    ? await env.R2_ASSETS.get(key, { range: request.headers })
-    : await env.R2_ASSETS.get(key);
+    ? await env.R2_ASSETS.get(r2Key, { range: request.headers })
+    : await env.R2_ASSETS.get(r2Key);
   if (!object) return json({ error: 'Not found' }, { status: 404 }, origin);
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set('Content-Type', headers.get('Content-Type') || 'audio/mpeg');
+  headers.set('Content-Type', headers.get('Content-Type') || defaultContentType);
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Cache-Control', 'private, no-store');
   if (origin) headers.set('Access-Control-Allow-Origin', origin);
@@ -70,4 +67,27 @@ export async function handleAssetRequest(
 
   headers.set('Content-Length', String(object.size));
   return new Response(object.body, { status: 200, headers });
+}
+
+export async function handleAssetRequest(
+  request: Request,
+  env: AssetsEnv,
+  origin: string | undefined,
+  json: (body: unknown, init?: ResponseInit, origin?: string) => Response,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith(AUDIO_PREFIX)) {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 }, origin);
+    const key = `audio/${decodeURIComponent(url.pathname.slice(AUDIO_PREFIX.length))}`;
+    return streamR2Object(request, env, origin, json, key, 'audio/mpeg');
+  }
+
+  if (url.pathname.startsWith(RESPONSES_PREFIX)) {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, { status: 405 }, origin);
+    const key = `responses/${decodeURIComponent(url.pathname.slice(RESPONSES_PREFIX.length))}`;
+    return streamR2Object(request, env, origin, json, key, 'audio/webm');
+  }
+
+  return null;
 }

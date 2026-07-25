@@ -3,6 +3,8 @@ import { FeedbackBody } from '../components/AiFeedbackSection';
 import {
   ApiError,
   clearTeacherSession,
+  downloadServerReportPdf,
+  fetchAttemptReportAsTeacher,
   fetchClassOverviews,
   fetchTeacherDashboard,
   generateClassOverview,
@@ -66,8 +68,16 @@ function aiSnippet(text: string, maxWords = 12): string {
   return words.length <= maxWords ? words.join(' ') : `${words.slice(0, maxWords).join(' ')}…`;
 }
 
-/** Class AI Overview card: history pager + quota-limited generate button. */
-function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: string; hasSubmissions: boolean }) {
+/** Class AI Overview card: history pager + quota-limited generate button (per paper). */
+function ClassOverviewSection({
+  teacherKey,
+  testCode,
+  hasAttempts,
+}: {
+  teacherKey: string;
+  testCode: '01' | '02' | '03';
+  hasAttempts: boolean;
+}) {
   const [overviews, setOverviews] = useState<ClassOverview[]>([]);
   const [quota, setQuota] = useState<AiQuota | null>(null);
   const [index, setIndex] = useState(0);
@@ -76,7 +86,10 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
 
   useEffect(() => {
     let cancelled = false;
-    fetchClassOverviews(teacherKey)
+    setOverviews([]);
+    setIndex(0);
+    setError('');
+    fetchClassOverviews(teacherKey, testCode)
       .then((list) => {
         if (cancelled) return;
         setOverviews(list.overviews);
@@ -88,14 +101,14 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
     return () => {
       cancelled = true;
     };
-  }, [teacherKey]);
+  }, [teacherKey, testCode]);
 
   const generate = async () => {
     if (generating) return;
     setGenerating(true);
     setError('');
     try {
-      const result = await generateClassOverview(teacherKey);
+      const result = await generateClassOverview(teacherKey, testCode);
       setOverviews((previous) => [{ id: Date.now(), ...result.overview }, ...previous]);
       setQuota(result.quota);
       setIndex(0);
@@ -104,7 +117,7 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
       if (code === 'NO_QUOTA') {
         setError('No AI overview uses left. Ask the administrator to increase your allowance.');
       } else if (code === 'NO_SUBMISSIONS') {
-        setError('No submissions in this class yet — the overview needs at least one result.');
+        setError('No results for this paper in this class yet — the overview needs at least one completed attempt.');
       } else {
         setError('The AI overview is temporarily unavailable. Your quota was not deducted — please try again in a moment.');
       }
@@ -115,16 +128,17 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
 
   const remaining = quota ? quota.remaining : null;
   const current = overviews[index];
-  const disabled = generating || !hasSubmissions || (remaining != null && remaining <= 0);
+  const disabled = generating || !hasAttempts || (remaining != null && remaining <= 0);
+  const paperLabel = testCode === '01' ? 'Paper I' : testCode === '02' ? 'Paper II' : 'Paper III';
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6">
       <h2 className="mb-4 text-center text-sm font-bold uppercase tracking-widest text-slate-500">
-        Class AI Overview
+        Class AI Overview · {paperLabel}
       </h2>
 
       {current ? (
-        <div className="mx-auto mb-5 max-w-3xl rounded-2xl border border-edt-indigo/25 bg-slate-50/60 p-5">
+        <div className="mx-auto mb-5 max-w-5xl rounded-2xl border border-edt-indigo/25 bg-slate-50/60 p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <button
               type="button"
@@ -153,7 +167,7 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
       ) : null}
 
       {generating ? (
-        <div className="mx-auto mb-5 flex max-w-3xl items-center justify-center gap-2 rounded-2xl border border-edt-indigo/25 bg-white p-6">
+        <div className="mx-auto mb-5 flex max-w-5xl items-center justify-center gap-2 rounded-2xl border border-edt-indigo/25 bg-white p-6">
           <span className="h-2 w-2 animate-bounce rounded-full bg-edt-indigo" />
           <span className="h-2 w-2 animate-bounce rounded-full bg-edt-gold [animation-delay:150ms]" />
           <span className="h-2 w-2 animate-bounce rounded-full bg-edt-indigo [animation-delay:300ms]" />
@@ -161,7 +175,7 @@ function ClassOverviewSection({ teacherKey, hasSubmissions }: { teacherKey: stri
         </div>
       ) : null}
 
-      {error ? <p className="mx-auto mb-4 max-w-3xl text-center text-sm text-amber-700">{error}</p> : null}
+      {error ? <p className="mx-auto mb-4 max-w-5xl text-center text-sm text-amber-700">{error}</p> : null}
 
       <div className="text-center">
         <button
@@ -190,6 +204,11 @@ export function TeacherDashboardScreen({
   const [data, setData] = useState<TeacherDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const [paperFilter, setPaperFilter] = useState<'01' | '02' | '03'>('01');
+  const [detailAttemptId, setDetailAttemptId] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailPayload, setDetailPayload] = useState<import('../types').AttemptReportPayload | null>(null);
 
   // Submission table sort
   const [subSortDir, setSubSortDir] = useState<SortDir>('desc');
@@ -364,11 +383,42 @@ export function TeacherDashboardScreen({
               </div>
             </section>
 
-            {/* Student Submission Table */}
+            {/* Paper filter */}
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['01', 'Paper I'],
+                    ['02', 'Paper II'],
+                    ['03', 'Paper III'],
+                  ] as const
+                ).map(([code, label]) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      setPaperFilter(code);
+                      setDetailAttemptId(null);
+                      setDetailPayload(null);
+                    }}
+                    className={`rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] ${
+                      paperFilter === code
+                        ? 'bg-edt-forest text-edt-neon'
+                        : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {paperFilter === '01' ? (
+            /* Student Submission Table (Paper I) */
             <section className="rounded-2xl border border-slate-200 bg-white p-6">
               <div className="mb-4 flex items-end justify-between gap-4">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">
-                  Student Submissions ({data.totalSubmissions})
+                  Paper I Submissions ({data.totalSubmissions})
                 </h2>
                 <button
                   type="button"
@@ -439,8 +489,117 @@ export function TeacherDashboardScreen({
                 </table>
               </div>
             </section>
+            ) : (
+            <section className="rounded-2xl border border-slate-200 bg-white p-6">
+              <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">
+                {paperFilter === '02' ? 'Paper II Attempts' : 'Paper III Attempts'} (
+                {(data.paperAttempts ?? []).filter((a) => a.testCode === paperFilter).length})
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2">Submitted</th>
+                      <th className="px-3 py-2">Candidate</th>
+                      <th className="px-3 py-2">Ref</th>
+                      <th className="px-3 py-2">Overall band</th>
+                      <th className="px-3 py-2">Parts</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.paperAttempts ?? [])
+                      .filter((a) => a.testCode === paperFilter)
+                      .map((row) => (
+                        <tr key={row.attemptId} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-xs whitespace-nowrap text-slate-500">
+                            {row.submittedAt ? fmtDatetime(row.submittedAt) : '—'}
+                          </td>
+                          <td className="px-3 py-3 text-xs font-medium">{row.candidateName}</td>
+                          <td className="px-3 py-3 font-mono text-xs">{row.candidateRef}</td>
+                          <td className="px-3 py-3 text-xs font-semibold">{row.overallBand ?? '—'}</td>
+                          <td className="px-3 py-3 text-xs text-slate-500">
+                            {row.partBands.map((b) => `${b.partCode}:${b.cefrLabel}`).join(' · ') || '—'}
+                          </td>
+                          <td className="px-3 py-3 text-xs">{row.gradingStatus}</td>
+                          <td className="px-3 py-3 text-xs">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="rounded-lg border border-edt-neon px-2 py-1 text-[10px] font-bold uppercase text-edt-forest"
+                                onClick={() =>
+                                  void downloadServerReportPdf(
+                                    row.attemptId,
+                                    'en',
+                                    '',
+                                    `EDT-Report_${row.testCode}_${row.attemptId}.pdf`,
+                                    session.teacherKey,
+                                  )
+                                }
+                              >
+                                PDF
+                              </button>
+                              {paperFilter === '03' ? (
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-edt-gold px-2 py-1 text-[10px] font-bold uppercase text-edt-forest"
+                                  onClick={() => {
+                                    setDetailAttemptId(row.attemptId);
+                                    setDetailLoading(true);
+                                    void fetchAttemptReportAsTeacher(row.attemptId, session.teacherKey)
+                                      .then(setDetailPayload)
+                                      .finally(() => setDetailLoading(false));
+                                  }}
+                                >
+                                  Open report
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              {paperFilter === '03' && detailAttemptId ? (
+                <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-bold text-edt-forest">Attempt detail</h3>
+                  {detailLoading ? <p className="mt-2 text-xs text-slate-500">Loading…</p> : null}
+                  {detailPayload?.review?.map((r) => (
+                    <div key={r.questionCode} className="mt-4 rounded-lg border border-white bg-white p-3">
+                      <p className="text-xs font-semibold text-edt-olive">
+                        Task {r.canonicalNumber} · {r.aiBandKey ?? '—'}
+                      </p>
+                      {r.audioUrl ? (
+                        <audio
+                          className="mt-2 w-full"
+                          controls
+                          src={`${r.audioUrl}`}
+                          // Teacher auth via cookie not available; use fetch blob would be better —
+                          // for now teachers open via authenticated fetch in a follow-up. Show essay always.
+                        />
+                      ) : null}
+                      {r.textResponse ? (
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-slate-700">
+                          {r.textResponse}
+                        </pre>
+                      ) : null}
+                      {r.transcriptText ? (
+                        <p className="mt-2 text-xs text-slate-500">
+                          <span className="font-semibold">Transcript: </span>
+                          {r.transcriptText}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+            )}
 
-            {/* Question Correctness Rate Table */}
+            {paperFilter === '01' ? (
+            /* Question Correctness Rate Table */
             <section className="rounded-2xl border border-slate-200 bg-white p-6">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">
@@ -532,9 +691,18 @@ export function TeacherDashboardScreen({
                 </table>
               </div>
             </section>
+            ) : null}
 
-            {/* Class AI Overview (bottom-center) */}
-            <ClassOverviewSection teacherKey={session.teacherKey} hasSubmissions={data.totalSubmissions > 0} />
+            {/* Class AI Overview (bottom-center) — scoped to active paper filter */}
+            <ClassOverviewSection
+              teacherKey={session.teacherKey}
+              testCode={paperFilter}
+              hasAttempts={
+                paperFilter === '01'
+                  ? data.totalSubmissions > 0
+                  : (data.paperAttempts ?? []).some((a) => a.testCode === paperFilter)
+              }
+            />
           </>
         ) : null}
       </main>

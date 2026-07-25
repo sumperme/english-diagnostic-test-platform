@@ -2,12 +2,13 @@
 #
 # What it does, in order:
 #   1. Exports a full backup to db_backup/edt-diagnostic-<timestamp>.sql
-#   2. Applies pending migrations (e.g. 0006-0010: unified test bank, Paper I/II
-#      content, voucher_test_usage, activate Paper II)
+#   2. Applies pending migrations (through 0019: unified test bank, Papers I–III
+#      content, voucher_test_usage, AI feedback, Paper III schema/seed/activate)
 #   3. Cleanses candidate data: deletes submissions, sessions, attempts,
 #      reports, PDF cache index, users, and per-test usage; resets every
 #      voucher to unused. VOUCHERS AND TEACHER CREDENTIALS ARE KEPT.
-#   4. Verifies row counts (2 tests, 135 question groups/questions, bands,
+#      Prefer -SkipCleanse for additive Paper III go-live (keep live attempts).
+#   4. Verifies row counts (3 tests, 145 question groups/questions, bands,
 #      vouchers intact)
 #
 # Usage:
@@ -141,18 +142,18 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host " Remote migrate + cleanse complete" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
-Write-Host "  tests:               $($row.tests)  (expected 2)"
-Write-Host "  question groups:     $($row.question_groups)  (expected 135)"
-Write-Host "  questions:           $($row.questions)  (expected 135)"
+Write-Host "  tests:               $($row.tests)  (expected 3)"
+Write-Host "  question groups:     $($row.question_groups)  (expected 145)"
+Write-Host "  questions:           $($row.questions)  (expected 145)"
 Write-Host "  conversion bands:    $($row.bands)"
 Write-Host "  vouchers (kept):     $($row.vouchers)"
 Write-Host "  teacher credentials: $($row.teacher_credentials)"
-Write-Host "  submissions:         $($row.submissions)  (expected 0)"
-Write-Host "  test attempts:       $($row.test_attempts)  (expected 0)"
-Write-Host "  used vouchers:       $($row.used_vouchers)  (expected 0)"
+Write-Host "  submissions:         $($row.submissions)  (expected 0 after cleanse)"
+Write-Host "  test attempts:       $($row.test_attempts)  (expected 0 after cleanse)"
+Write-Host "  used vouchers:       $($row.used_vouchers)  (expected 0 after cleanse)"
 
-if ([int]$row.tests -lt 2 -or [int]$row.questions -ne 135) {
-    Write-Warning "Counts differ from the expected unified test bank. Check migration output above."
+if ([int]$row.tests -lt 3 -or [int]$row.questions -ne 145 -or [int]$row.question_groups -ne 145) {
+    Write-Warning "Counts differ from the expected unified test bank (3 tests / 145 groups). Check migration output above."
 }
 
 Write-Host ""

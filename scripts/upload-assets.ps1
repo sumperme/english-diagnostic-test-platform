@@ -1,6 +1,7 @@
 # Uploads EDT assets to the R2 bucket `edt-assets`:
 #   - 21 Test 2 MP3s            -> audio/test-02/
 #     (20 listening clips + 20260701_00_Testing_volume.mp3 sound-check track)
+#   - 7 Paper III speaking prompts + start/stop beeps -> audio/test-03/
 #   - PDF report fonts          -> fonts/  (downloaded if missing)
 #
 # Prerequisites (remote mode):
@@ -77,6 +78,43 @@ foreach ($track in $tracks) {
     Write-Host "Uploading $key"
     $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $track.FullName, '--content-type', 'audio/mpeg') + $flags)
     if ($code -ne 0) { throw "Upload failed for $key" }
+}
+
+# --- Paper III speaking prompt tracks ---
+# Source filenames use spaces ("Speaking Prompt_Task 1.mp3"); R2 keys use
+# underscores to match shared_resources.content_url in the Test 3 seed.
+$paper3AudioDir = Join-Path $root 'Client_Feedback\Audio Tracks_Paper III'
+for ($n = 1; $n -le 7; $n++) {
+    $srcName = "Speaking Prompt_Task $n.mp3"
+    $src = Join-Path $paper3AudioDir $srcName
+    if (-not (Test-Path $src)) {
+        Write-Warning "Missing Paper III track: $src"
+        continue
+    }
+    $key = "audio/test-03/Speaking_Prompt_Task_$n.mp3"
+    Write-Host "Uploading $key (from $srcName)"
+    $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $src, '--content-type', 'audio/mpeg') + $flags)
+    if ($code -ne 0) { throw "Upload failed for $key" }
+}
+
+$sfxDir = Join-Path $root 'Client_Feedback\system_sound_effects'
+foreach ($sfx in @(
+    # 3-second start cue (synced with on-screen 3-2-1). Source may be .MP3 casing.
+    @{ File = 'Recording_Start_Sound_3Sec.MP3'; Key = 'audio/test-03/Recording_Start_Sound_3Sec.mp3' },
+    @{ File = 'Recording_Stop_Sound.mp3'; Key = 'audio/test-03/Recording_Stop_Sound.mp3' }
+)) {
+    $src = Join-Path $sfxDir $sfx.File
+    if (-not (Test-Path $src)) {
+        # Fall back to lowercase extension if present.
+        $alt = Join-Path $sfxDir ($sfx.File -replace '\.MP3$', '.mp3')
+        if (Test-Path $alt) { $src = $alt }
+    }
+    if (-not (Test-Path $src)) {
+        throw "Missing required Paper III system sound: $($sfx.File) in $sfxDir"
+    }
+    Write-Host "Uploading $($sfx.Key)"
+    $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$($sfx.Key)", '--file', $src, '--content-type', 'audio/mpeg') + $flags)
+    if ($code -ne 0) { throw "Upload failed for $($sfx.Key)" }
 }
 
 # --- PDF fonts ---

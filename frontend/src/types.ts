@@ -91,8 +91,8 @@ export type ReportResult = {
 export type AttemptOptions = { A: string; B: string; C: string; D: string };
 
 export type AttemptResource =
-  | { type: 'audio'; resourceId: number; url: string; title: string | null }
-  | { type: 'text'; resourceId: number; title: string | null; content: string };
+  | { type: 'audio'; resourceId: number; url: string; title: string | null; metadata?: unknown }
+  | { type: 'text'; resourceId: number; title: string | null; content: string; metadata?: unknown };
 
 export type AttemptItem = {
   questionCode: string;
@@ -101,6 +101,18 @@ export type AttemptItem = {
   prompt: string;
   options: AttemptOptions;
   resourceId: number | null;
+  responseType?: 'mcq' | 'speaking' | 'writing';
+  meta?: {
+    responseType?: string;
+    maxSeconds?: number;
+    prepSeconds?: number;
+    overlay?: unknown;
+    instructions?: string;
+    wordMin?: number;
+    wordMax?: number;
+    guidelines?: string;
+  };
+  dimensionKey?: string | null;
 };
 
 export type AttemptInstance = {
@@ -177,11 +189,29 @@ export type AttemptReviewRow = {
   correctAnswer: string;
   selectedOption: string | null;
   isCorrect: number | null;
+  responseType?: string;
+  dimensionKey?: string | null;
+  textResponse?: string | null;
+  audioUrl?: string | null;
+  transcriptText?: string | null;
+  aiBandKey?: string | null;
+  aiMark?: {
+    unanswered?: boolean;
+    bandKey?: string;
+    cefrLabel?: string;
+    strengths?: string[];
+    improvements?: string[];
+    rationale?: string;
+    criteria?: Record<string, string>;
+  } | null;
 };
 
 export type AttemptReportPayload = {
   variables: ReportVariables | null;
   review: AttemptReviewRow[];
+  gradingStatus?: string;
+  attemptId?: string;
+  testCode?: string;
 };
 
 // --- AI feedback (DeepSeek) ---
@@ -201,6 +231,7 @@ export type ClassOverview = {
   contentEn: string;
   contentZh: string;
   createdAt: number;
+  testCode?: '01' | '02' | '03' | string;
 };
 
 export type AiQuota = { allowed: number; used: number; remaining: number };
@@ -219,8 +250,10 @@ export type AdminSummary = {
   assigned: number;
   usedTest1: number;
   usedTest2: number;
+  usedTest3: number;
   submissionsTest1: number;
   submissionsTest2: number;
+  submissionsTest3: number;
 };
 
 export type AdminVoucher = {
@@ -231,6 +264,7 @@ export type AdminVoucher = {
   useCount: number;
   useCountTest1: number;
   useCountTest2: number;
+  useCountTest3: number;
   userGroup: string;
   educationLevel: string | null;
   remark: string | null;
@@ -302,6 +336,18 @@ export type TeacherQuestionStat = {
   totalResponses: number;
 };
 
+export type TeacherPaperAttemptRow = {
+  attemptId: string;
+  testCode: string;
+  testName: string;
+  candidateName: string;
+  candidateRef: string;
+  submittedAt: number | null;
+  gradingStatus: string;
+  overallBand: string | null;
+  partBands: Array<{ partCode: string; cefrLabel: string }>;
+};
+
 export type TeacherDashboardData = {
   userGroup: string;
   totalVouchers: number;
@@ -314,6 +360,7 @@ export type TeacherDashboardData = {
   dimensionStats: TeacherDimensionStat[];
   submissions: TeacherSubmissionRow[];
   questionStats: TeacherQuestionStat[];
+  paperAttempts?: TeacherPaperAttemptRow[];
 };
 
 export type AdminTeacherCredential = {
@@ -326,6 +373,7 @@ export type AdminTeacherCredential = {
   totalUsesAllowed: number;
   totalUseCountTest1: number;
   totalUseCountTest2: number;
+  totalUseCountTest3: number;
   aiUsesAllowed: number;
   aiUseCount: number;
 };

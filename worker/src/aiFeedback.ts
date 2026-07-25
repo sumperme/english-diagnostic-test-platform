@@ -2,8 +2,8 @@
 //
 //   POST /api/attempts/:id/ai-feedback     start generation (report credentials)
 //   GET  /api/attempts/:id/ai-feedback     poll status / fetch stored feedback
-//   POST /api/teacher/class-overview       generate a class overview (quota-limited)
-//   GET  /api/teacher/class-overviews      overview history + remaining quota
+//   POST /api/teacher/class-overview       generate a class overview (quota-limited; ?testCode=01|02|03)
+//   GET  /api/teacher/class-overviews      overview history for a paper + remaining shared quota
 //
 // Job model: a D1-backed state machine on attempt_reports.ai_status
 // (none | pending | done | failed). POST atomically claims the job and runs it
@@ -18,6 +18,7 @@
 import {
   buildClassUserPrompt,
   buildStudentUserPrompt,
+  CLASS_PAPER_LABELS,
   CLASS_SYSTEM_PROMPT,
   CORRECTIVE_INSTRUCTION,
   enforceOutputLimits,
@@ -25,6 +26,7 @@ import {
   STUDENT_SYSTEM_PROMPT,
   type BilingualFeedback,
   type ClassPromptContext,
+  type ClassTestCode,
 } from './aiPrompts';
 import { logAiUsage, type AiUsageContext } from './aiUsageLog';
 import { REPORT_STRINGS } from './reportI18n';
@@ -39,7 +41,7 @@ export type AiEnv = {
 type JsonResponder = (body: unknown, init?: ResponseInit, origin?: string) => Response;
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const DEEPSEEK_MODEL = 'deepseek-chat';
+const DEEPSEEK_MODEL = 'deepseek-v4-flash';
 const MAX_ATTEMPTS = 3;
 const ATTEMPT_TIMEOUT_MS = 45_000;
 const BACKOFF_MS = [1_000, 4_000];
@@ -182,10 +184,16 @@ const feedbackOf = (row: AiReportRow): BilingualFeedback | null =>
 
 /** Count answered vs unanswered rows for AI prompt context. */
 async function loadAnswerStats(env: AiEnv, attemptId: string) {
+  // MCQ: selected_option. Paper III: text_response and/or saved speaking audio.
   const row = await env.DB.prepare(
     `SELECT
        COUNT(*) AS total,
-       SUM(CASE WHEN selected_option IS NOT NULL THEN 1 ELSE 0 END) AS answered
+       SUM(CASE
+         WHEN selected_option IS NOT NULL THEN 1
+         WHEN text_response IS NOT NULL AND TRIM(text_response) != '' THEN 1
+         WHEN audio_r2_key IS NOT NULL AND audio_r2_key != '' THEN 1
+         ELSE 0
+       END) AS answered
      FROM test_attempt_answers
      WHERE test_attempt_id = ?`,
   )
@@ -293,15 +301,46 @@ async function loadTeacher(request: Request, env: AiEnv): Promise<TeacherRow | n
     .first<TeacherRow>();
 }
 
+function parseClassTestCode(raw: unknown): ClassTestCode | null {
+  if (raw === '01' || raw === '02' || raw === '03') return raw;
+  return null;
+}
+
+/** Resolve testCode from query string and/or JSON body (POST). Defaults to Paper I. */
+async function resolveClassTestCode(request: Request, url: URL): Promise<ClassTestCode | null> {
+  const rawQuery = url.searchParams.get('testCode');
+  if (rawQuery != null && rawQuery !== '') {
+    return parseClassTestCode(rawQuery);
+  }
+
+  if (request.method === 'POST') {
+    try {
+      const body = (await request.clone().json()) as { testCode?: unknown };
+      if (body?.testCode != null && body.testCode !== '') {
+        return parseClassTestCode(body.testCode);
+      }
+    } catch {
+      // Empty / non-JSON body — fall through to default.
+    }
+  }
+
+  return '01';
+}
+
 async function generateClassOverview(request: Request, env: AiEnv, origin: string | undefined, json: JsonResponder) {
   const teacher = await loadTeacher(request, env);
   if (!teacher) return json({ error: 'Unauthorized' }, { status: 401 }, origin);
   if (!env.DEEPSEEK_API_KEY) return json({ error: 'AI_UNAVAILABLE' }, { status: 503 }, origin);
 
-  const context = await buildClassContext(env, teacher.user_group);
+  const url = new URL(request.url);
+  const testCode = await resolveClassTestCode(request, url);
+  if (!testCode) return json({ error: 'INVALID_TEST_CODE' }, { status: 400 }, origin);
+
+  const context = await buildClassContext(env, teacher.user_group, testCode);
   if (!context) return json({ error: 'NO_SUBMISSIONS' }, { status: 400 }, origin);
 
   // Atomic quota decrement; refunded below on terminal AI failure.
+  // Shared pool across all papers (ai_use_count / ai_uses_allowed).
   const decrement = await env.DB.prepare(
     'UPDATE teacher_credentials SET ai_use_count = ai_use_count + 1 WHERE key = ? AND ai_use_count < ai_uses_allowed',
   )
@@ -317,19 +356,25 @@ async function generateClassOverview(request: Request, env: AiEnv, origin: strin
     const usageContext: AiUsageContext = {
       featureType: 'class_overview',
       teacherKey: teacher.key,
+      testCode,
     };
     const overview = await generateWithRetries(env, CLASS_SYSTEM_PROMPT, buildClassUserPrompt(context), usageContext);
     const now = Date.now();
     await env.DB.prepare(
-      'INSERT INTO class_overviews (teacher_key, user_group, content_en, content_zh, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO class_overviews (teacher_key, user_group, content_en, content_zh, created_at, test_code) VALUES (?, ?, ?, ?, ?, ?)',
     )
-      .bind(teacher.key, teacher.user_group, overview.en, overview.zhHK, now)
+      .bind(teacher.key, teacher.user_group, overview.en, overview.zhHK, now, testCode)
       .run();
 
     const remaining = Math.max(0, teacher.ai_uses_allowed - (teacher.ai_use_count + 1));
     return json(
       {
-        overview: { contentEn: overview.en, contentZh: overview.zhHK, createdAt: now },
+        overview: {
+          contentEn: overview.en,
+          contentZh: overview.zhHK,
+          createdAt: now,
+          testCode,
+        },
         quota: { allowed: teacher.ai_uses_allowed, used: teacher.ai_use_count + 1, remaining },
       },
       undefined,
@@ -340,6 +385,7 @@ async function generateClassOverview(request: Request, env: AiEnv, origin: strin
       JSON.stringify({
         message: 'Class overview generation failed',
         teacherKey: teacher.key,
+        testCode,
         error: error instanceof Error ? error.message : String(error),
       }),
     );
@@ -354,11 +400,18 @@ async function listClassOverviews(request: Request, env: AiEnv, origin: string |
   const teacher = await loadTeacher(request, env);
   if (!teacher) return json({ error: 'Unauthorized' }, { status: 401 }, origin);
 
+  const url = new URL(request.url);
+  const testCode = await resolveClassTestCode(request, url);
+  if (!testCode) return json({ error: 'INVALID_TEST_CODE' }, { status: 400 }, origin);
+
   const result = await env.DB.prepare(
-    'SELECT id, content_en, content_zh, created_at FROM class_overviews WHERE teacher_key = ? ORDER BY created_at DESC LIMIT 50',
+    `SELECT id, content_en, content_zh, created_at, test_code
+     FROM class_overviews
+     WHERE teacher_key = ? AND test_code = ?
+     ORDER BY created_at DESC LIMIT 50`,
   )
-    .bind(teacher.key)
-    .all<{ id: number; content_en: string; content_zh: string; created_at: number }>();
+    .bind(teacher.key, testCode)
+    .all<{ id: number; content_en: string; content_zh: string; created_at: number; test_code: string }>();
 
   return json(
     {
@@ -372,6 +425,7 @@ async function listClassOverviews(request: Request, env: AiEnv, origin: string |
         contentEn: row.content_en,
         contentZh: row.content_zh,
         createdAt: row.created_at,
+        testCode: row.test_code,
       })),
     },
     undefined,
@@ -379,8 +433,18 @@ async function listClassOverviews(request: Request, env: AiEnv, origin: string |
   );
 }
 
-/** Aggregate Test 1 class statistics for the prompt (mirrors the teacher dashboard). */
-async function buildClassContext(env: AiEnv, userGroup: string): Promise<ClassPromptContext | null> {
+/** Aggregate class statistics for the prompt, scoped to one paper. */
+async function buildClassContext(
+  env: AiEnv,
+  userGroup: string,
+  testCode: ClassTestCode,
+): Promise<ClassPromptContext | null> {
+  if (testCode === '01') return buildPaper1ClassContext(env, userGroup);
+  return buildAttemptClassContext(env, userGroup, testCode);
+}
+
+/** Paper I: submissions table aggregate (mirrors the teacher dashboard). */
+async function buildPaper1ClassContext(env: AiEnv, userGroup: string): Promise<ClassPromptContext | null> {
   const result = await env.DB.prepare('SELECT total_score, dimension_scores FROM submissions WHERE user_group = ?')
     .bind(userGroup)
     .all<{ total_score: number; dimension_scores: string | null }>();
@@ -413,15 +477,145 @@ async function buildClassContext(env: AiEnv, userGroup: string): Promise<ClassPr
   const labels = REPORT_STRINGS.en.dimensionLabels;
   const dimensionMeans = [...dimensionSums.entries()]
     .filter(([, agg]) => agg.count > 0)
-    .map(([key, agg]) => ({ key, label: labels[key] ?? key, mean: Math.round((agg.sum / agg.count) * 10) / 10 }));
+    .map(([key, agg]) => ({
+      key,
+      label: labels[key] ?? key,
+      mean: Math.round((agg.sum / agg.count) * 10) / 10,
+      max: 5,
+    }));
 
   return {
+    testCode: '01',
+    paperLabel: CLASS_PAPER_LABELS['01'],
     userGroup,
     submissionCount: n,
     mean: Math.round(mean * 10) / 10,
     median: Math.round(median * 10) / 10,
     stdDev: Math.round(Math.sqrt(variance) * 10) / 10,
+    scoreMax: 90,
     dimensionMeans,
+  };
+}
+
+const PART_LABELS_BY_TEST: Record<'02' | '03', Record<string, string>> = {
+  '02': { '01': 'Part A Listening', '02': 'Part B Reading' },
+  '03': { '01': 'Part A Speaking', '02': 'Part B Writing' },
+};
+
+/** Papers II/III: completed attempts + attempt_reports.variables for the teacher group. */
+async function buildAttemptClassContext(
+  env: AiEnv,
+  userGroup: string,
+  testCode: '02' | '03',
+): Promise<ClassPromptContext | null> {
+  const result = await env.DB.prepare(
+    `SELECT ar.variables
+     FROM test_attempts a
+     JOIN tests t ON t.id = a.test_id
+     LEFT JOIN users u ON u.id = a.user_id
+     JOIN attempt_reports ar ON ar.test_attempt_id = a.id
+     WHERE a.status = 'completed'
+       AND t.test_code = ?
+       AND (u.user_group = ? OR a.session_token IN (
+         SELECT token FROM sessions s JOIN vouchers v ON v.code = s.voucher_code WHERE v.user_group = ?
+       ))`,
+  )
+    .bind(testCode, userGroup, userGroup)
+    .all<{ variables: string }>();
+
+  const rows = result.results ?? [];
+  if (rows.length === 0) return null;
+
+  const overallBandMap = new Map<string, number>();
+  const partBandMap = new Map<string, number>();
+  const dimensionSums = new Map<string, { sum: number; count: number; max: number }>();
+  const overallScores: number[] = [];
+  let scoreMax = 0;
+
+  for (const row of rows) {
+    let vars: ReportVariablesV1;
+    try {
+      vars = JSON.parse(row.variables) as ReportVariablesV1;
+    } catch {
+      continue;
+    }
+
+    if (vars.bands?.overall?.cefrLabel) {
+      const label = vars.bands.overall.cefrLabel;
+      overallBandMap.set(label, (overallBandMap.get(label) ?? 0) + 1);
+    }
+
+    for (const part of vars.bands?.parts ?? []) {
+      if (!part.cefrLabel) continue;
+      const key = `${part.partCode}\0${part.cefrLabel}`;
+      partBandMap.set(key, (partBandMap.get(key) ?? 0) + 1);
+    }
+
+    if (testCode === '02' && vars.scores?.overall?.total > 0) {
+      overallScores.push(vars.scores.overall.correct);
+      scoreMax = Math.max(scoreMax, vars.scores.overall.total);
+    }
+
+    for (const dim of vars.dimensions ?? []) {
+      const agg = dimensionSums.get(dim.key) ?? { sum: 0, count: 0, max: dim.max };
+      agg.sum += Number(dim.score);
+      agg.count += 1;
+      agg.max = dim.max;
+      dimensionSums.set(dim.key, agg);
+    }
+  }
+
+  const n = rows.length;
+  let mean: number | null = null;
+  let median: number | null = null;
+  let stdDev: number | null = null;
+  if (overallScores.length > 0) {
+    const sorted = [...overallScores].sort((a, b) => a - b);
+    const m = sorted.length;
+    const avg = sorted.reduce((sum, score) => sum + score, 0) / m;
+    mean = Math.round(avg * 10) / 10;
+    median =
+      m % 2 === 0
+        ? Math.round(((sorted[m / 2 - 1] + sorted[m / 2]) / 2) * 10) / 10
+        : sorted[Math.floor(m / 2)];
+    const variance = sorted.reduce((sum, score) => sum + (score - avg) ** 2, 0) / m;
+    stdDev = Math.round(Math.sqrt(variance) * 10) / 10;
+  }
+
+  const labels = REPORT_STRINGS.en.dimensionLabels;
+  const partLabels = PART_LABELS_BY_TEST[testCode];
+
+  return {
+    testCode,
+    paperLabel: CLASS_PAPER_LABELS[testCode],
+    userGroup,
+    submissionCount: n,
+    mean,
+    median,
+    stdDev,
+    scoreMax: scoreMax > 0 ? scoreMax : undefined,
+    dimensionMeans: [...dimensionSums.entries()]
+      .filter(([, agg]) => agg.count > 0)
+      .map(([key, agg]) => ({
+        key,
+        label: labels[key] ?? key,
+        mean: Math.round((agg.sum / agg.count) * 10) / 10,
+        max: agg.max,
+      })),
+    overallBandCounts: [...overallBandMap.entries()]
+      .map(([cefrLabel, count]) => ({ cefrLabel, count }))
+      .sort((a, b) => b.count - a.count),
+    partBandCounts: [...partBandMap.entries()]
+      .map(([compound, count]) => {
+        const [partCode, cefrLabel] = compound.split('\0');
+        return {
+          partCode,
+          partLabel: partLabels[partCode] ?? `Part ${partCode}`,
+          cefrLabel,
+          count,
+        };
+      })
+      .sort((a, b) => a.partCode.localeCompare(b.partCode) || b.count - a.count),
   };
 }
 
@@ -492,7 +686,8 @@ async function callDeepSeek(
   });
 
   if (!response.ok) {
-    throw new Error(`DeepSeek HTTP ${response.status}`);
+    const errBody = await response.text().catch(() => '');
+    throw new Error(`DeepSeek HTTP ${response.status}: ${errBody.slice(0, 200)}`);
   }
 
   const payload = (await response.json()) as {

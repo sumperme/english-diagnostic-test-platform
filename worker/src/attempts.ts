@@ -13,11 +13,18 @@
 
 import { computePercentileStats } from './admin';
 import { consumeVoucherUse, getSession } from './index';
+import { enqueuePaper3Grade, type Paper3GradeEnv } from './paper3Grading';
 import { authorizeAttemptAccess } from './reports';
 import { REPORT_VARIABLES_VERSION, type LevelKey, type ReportVariablesV1 } from './reportVariables';
 
 type AttemptsEnv = {
   DB: D1Database;
+  R2_ASSETS?: R2Bucket;
+  DEEPSEEK_API_KEY?: string;
+  ASSEMBLYAI_API_KEY?: string;
+  ASSEMBLYAI_WEBHOOK_SECRET?: string;
+  ASSEMBLYAI_WEBHOOK_BASE?: string;
+  PAPER3_GRADE?: Queue;
 };
 
 type JsonResponder = (body: unknown, init?: ResponseInit, origin?: string) => Response;
@@ -30,6 +37,7 @@ type StartAttemptRequest = {
 type AnswerRequest = {
   questionCode?: string;
   selectedOption?: string | null;
+  textResponse?: string | null;
 };
 
 type SubmitRequest = {
@@ -44,6 +52,7 @@ type ServedRow = {
   part_code: string;
   part_skill: string | null;
   shared_resource_id: number | null;
+  response_type: string;
   question_id: number;
   question_code: string;
   prompt_text: string;
@@ -51,11 +60,13 @@ type ServedRow = {
   option_b: string;
   option_c: string;
   option_d: string;
+  explanation: string | null;
+  dimension_key: string | null;
 };
 
 type ResourcePayload =
-  | { type: 'audio'; resourceId: number; url: string; title: string | null }
-  | { type: 'text'; resourceId: number; title: string | null; content: string };
+  | { type: 'audio'; resourceId: number; url: string; title: string | null; metadata?: unknown }
+  | { type: 'text'; resourceId: number; title: string | null; content: string; metadata?: unknown };
 
 export type AttemptItem = {
   questionCode: string;
@@ -64,6 +75,9 @@ export type AttemptItem = {
   prompt: string;
   options: { A: string; B: string; C: string; D: string };
   resourceId: number | null;
+  responseType: 'mcq' | 'speaking' | 'writing';
+  meta?: unknown;
+  dimensionKey?: string | null;
 };
 
 type BandRow = {
@@ -192,12 +206,15 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
   // Load all variants for the test and pick one at random per group.
   const rowsResult = await env.DB.prepare(
     `SELECT g.id AS group_id, g.group_code, g.canonical_number, g.shared_resource_id,
+            COALESCE(g.response_type, 'mcq') AS response_type,
             p.part_code, p.skill AS part_skill,
             q.id AS question_id, q.question_code, q.prompt_text,
-            q.option_a, q.option_b, q.option_c, q.option_d
+            q.option_a, q.option_b, q.option_c, q.option_d, q.explanation,
+            d.key AS dimension_key
      FROM question_groups g
      JOIN test_parts p ON p.id = g.test_part_id
      JOIN questions q ON q.question_group_id = g.id
+     LEFT JOIN dimensions d ON d.id = g.dimension_id
      WHERE g.test_id = ?
      ORDER BY g.canonical_number`,
   )
@@ -219,32 +236,36 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
   );
 
   // Serving order. Parts keep their sequence (Part A before Part B).
-  // Part A (listening): each question has its own audio — shuffle all 20 items.
-  // Part B (reading): passages and questions follow canonical docx order
-  // (resources 21→26, questions within each passage by canonical_number).
+  // Paper III: fixed canonical order — no shuffle.
+  // Paper II Part A: shuffle; Part B: canonical passage order.
   const partCodes = [...new Set(chosen.map((row) => row.part_code))].sort();
   const served: ServedRow[] = [];
-  for (const partCode of partCodes) {
-    const clusters = new Map<string, ServedRow[]>();
-    for (const row of chosen) {
-      if (row.part_code !== partCode) continue;
-      const key = row.shared_resource_id != null ? `resource:${row.shared_resource_id}` : `group:${row.group_id}`;
-      const cluster = clusters.get(key) ?? [];
-      cluster.push(row);
-      clusters.set(key, cluster);
-    }
-    const clusterList = [...clusters.values()];
-    if (partCode === '02') {
-      clusterList.sort(
-        (a, b) => Math.min(...a.map((r) => r.canonical_number)) - Math.min(...b.map((r) => r.canonical_number)),
-      );
-      for (const cluster of clusterList) {
-        cluster.sort((a, b) => a.canonical_number - b.canonical_number);
-        served.push(...cluster);
+  const isPaper3 = test.test_code === '03';
+  if (isPaper3) {
+    served.push(...chosen.sort((a, b) => a.canonical_number - b.canonical_number));
+  } else {
+    for (const partCode of partCodes) {
+      const clusters = new Map<string, ServedRow[]>();
+      for (const row of chosen) {
+        if (row.part_code !== partCode) continue;
+        const key = row.shared_resource_id != null ? `resource:${row.shared_resource_id}` : `group:${row.group_id}`;
+        const cluster = clusters.get(key) ?? [];
+        cluster.push(row);
+        clusters.set(key, cluster);
       }
-    } else {
-      for (const cluster of shuffleInPlace(clusterList)) {
-        served.push(...shuffleInPlace(cluster));
+      const clusterList = [...clusters.values()];
+      if (partCode === '02') {
+        clusterList.sort(
+          (a, b) => Math.min(...a.map((r) => r.canonical_number)) - Math.min(...b.map((r) => r.canonical_number)),
+        );
+        for (const cluster of clusterList) {
+          cluster.sort((a, b) => a.canonical_number - b.canonical_number);
+          served.push(...cluster);
+        }
+      } else {
+        for (const cluster of shuffleInPlace(clusterList)) {
+          served.push(...shuffleInPlace(cluster));
+        }
       }
     }
   }
@@ -270,27 +291,66 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
   if (resourceIds.length > 0) {
     const placeholders = resourceIds.map(() => '?').join(',');
     const resourceRows = await env.DB.prepare(
-      `SELECT id, resource_type, title, content_url, text_content FROM shared_resources WHERE id IN (${placeholders})`,
+      `SELECT id, resource_type, title, content_url, text_content, metadata FROM shared_resources WHERE id IN (${placeholders})`,
     )
       .bind(...resourceIds)
-      .all<{ id: number; resource_type: string; title: string | null; content_url: string | null; text_content: string | null }>();
+      .all<{
+        id: number;
+        resource_type: string;
+        title: string | null;
+        content_url: string | null;
+        text_content: string | null;
+        metadata: string | null;
+      }>();
     for (const resource of resourceRows.results ?? []) {
+      let meta: unknown;
+      try {
+        meta = resource.metadata ? JSON.parse(resource.metadata) : undefined;
+      } catch {
+        meta = undefined;
+      }
       if (resource.resource_type === 'audio' && resource.content_url) {
-        resources[resource.id] = { type: 'audio', resourceId: resource.id, url: resource.content_url, title: resource.title };
+        resources[resource.id] = {
+          type: 'audio',
+          resourceId: resource.id,
+          url: resource.content_url,
+          title: resource.title,
+          metadata: meta,
+        };
       } else if (resource.resource_type === 'text' && resource.text_content) {
-        resources[resource.id] = { type: 'text', resourceId: resource.id, title: resource.title, content: resource.text_content };
+        resources[resource.id] = {
+          type: 'text',
+          resourceId: resource.id,
+          title: resource.title,
+          content: resource.text_content,
+          metadata: meta,
+        };
       }
     }
   }
 
-  const items: AttemptItem[] = served.map((row) => ({
-    questionCode: row.question_code,
-    partCode: row.part_code,
-    canonicalNumber: row.canonical_number,
-    prompt: row.prompt_text,
-    options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
-    resourceId: row.shared_resource_id,
-  }));
+  const items: AttemptItem[] = served.map((row) => {
+    let meta: unknown;
+    try {
+      meta = row.explanation ? JSON.parse(row.explanation) : undefined;
+    } catch {
+      meta = undefined;
+    }
+    const responseType = (row.response_type === 'speaking' || row.response_type === 'writing'
+      ? row.response_type
+      : 'mcq') as AttemptItem['responseType'];
+    return {
+      questionCode: row.question_code,
+      partCode: row.part_code,
+      canonicalNumber: row.canonical_number,
+      prompt: row.prompt_text,
+      options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
+      resourceId: row.shared_resource_id,
+      responseType,
+      meta,
+      dimensionKey: row.dimension_key,
+    };
+  });
 
   return json(
     {
@@ -337,8 +397,27 @@ async function saveAnswer(
 
   const body = await request.json<AnswerRequest>().catch(() => ({}) as AnswerRequest);
   const questionCode = (body.questionCode ?? '').trim();
+  if (!questionCode) {
+    return json({ error: 'Invalid answer payload' }, { status: 400 }, origin);
+  }
+
+  // Writing / constructed text save
+  if (body.textResponse !== undefined) {
+    const text = body.textResponse == null ? null : String(body.textResponse);
+    const update = await env.DB.prepare(
+      `UPDATE test_attempt_answers SET text_response = ?, answered_at = ?
+       WHERE test_attempt_id = ? AND question_code = ?`,
+    )
+      .bind(text, Date.now(), attemptId, questionCode)
+      .run();
+    if (!update.success || update.meta.changes !== 1) {
+      return json({ error: 'QUESTION_NOT_IN_ATTEMPT' }, { status: 404 }, origin);
+    }
+    return json({ ok: true }, undefined, origin);
+  }
+
   const selected = body.selectedOption == null ? null : String(body.selectedOption).trim().toUpperCase();
-  if (!questionCode || (selected !== null && !OPTION_KEYS.includes(selected))) {
+  if (selected !== null && !OPTION_KEYS.includes(selected)) {
     return json({ error: 'Invalid answer payload' }, { status: 400 }, origin);
   }
 
@@ -370,8 +449,31 @@ async function submitAttempt(
 
   const body = await request.json<SubmitRequest>().catch(() => ({}) as SubmitRequest);
 
+  const testRow = await env.DB.prepare('SELECT test_code FROM tests WHERE id = ?')
+    .bind(attempt.test_id)
+    .first<{ test_code: string }>();
+
   // Idempotency: return the stored report if already completed.
+  // Paper III: nudge grading again on retry when still pending/failed (e.g. lost queue message).
   if (attempt.status === 'completed') {
+    if (testRow?.test_code === '03') {
+      const gradeRow = await env.DB.prepare('SELECT grading_status FROM test_attempts WHERE id = ?')
+        .bind(attemptId)
+        .first<{ grading_status: string }>();
+      const gradingStatus = gradeRow?.grading_status ?? 'none';
+      if (gradingStatus === 'pending' || gradingStatus === 'failed') {
+        try {
+          if (gradingStatus === 'failed') {
+            await env.DB.prepare(`UPDATE test_attempts SET grading_status = 'pending' WHERE id = ?`)
+              .bind(attemptId)
+              .run();
+          }
+          await enqueuePaper3Grade(env as Paper3GradeEnv, attemptId, body.autoSubmitted === true);
+        } catch (error) {
+          console.error('Paper3 re-enqueue on idempotent submit failed', error);
+        }
+      }
+    }
     return json(await buildReportPayload(env, attemptId), undefined, origin);
   }
 
@@ -379,6 +481,33 @@ async function submitAttempt(
   const consumed = await consumeVoucherUse(env.DB, session.voucher_code, attempt.test_id, usesAllowed, session.token);
   if (!consumed) {
     return json({ error: 'NO_REMAINING_USES' }, { status: 409 }, origin);
+  }
+
+  // Paper III: consume voucher, mark completed, enqueue async grading (no MCQ score).
+  if (testRow?.test_code === '03') {
+    const now = Date.now();
+    await env.DB.prepare(
+      "UPDATE test_attempts SET end_time = ?, status = 'completed', grading_status = 'pending', overall_score = 0 WHERE id = ?",
+    )
+      .bind(now, attemptId)
+      .run();
+    // Attempt is already completed — do not fail the HTTP response if the queue nudge throws.
+    try {
+      await enqueuePaper3Grade(env as Paper3GradeEnv, attemptId, body.autoSubmitted === true);
+    } catch (error) {
+      console.error('Paper3 enqueue after submit failed', error);
+    }
+    return json(
+      {
+        variables: null,
+        review: [],
+        gradingStatus: 'pending',
+        attemptId,
+        testCode: '03',
+      },
+      undefined,
+      origin,
+    );
   }
 
   // Score in place against the served variants.
@@ -629,6 +758,17 @@ async function getAttemptReport(
   if (!authorized) return json({ error: 'Unauthorized' }, { status: 401 }, origin);
   if (attempt.status !== 'completed') return json({ error: 'Report not ready' }, { status: 404 }, origin);
 
+  const gradeRow = await env.DB.prepare('SELECT grading_status FROM test_attempts WHERE id = ?')
+    .bind(attemptId)
+    .first<{ grading_status: string }>();
+  const gradingStatus = gradeRow?.grading_status ?? 'none';
+  if (gradingStatus === 'pending') {
+    return json({ variables: null, review: [], gradingStatus: 'pending', attemptId }, undefined, origin);
+  }
+  if (gradingStatus === 'failed') {
+    return json({ variables: null, review: [], gradingStatus: 'failed', attemptId }, undefined, origin);
+  }
+
   return json(await buildReportPayload(env, attemptId), undefined, origin);
 }
 
@@ -643,12 +783,14 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
   // Candidate's actual served sequence; canonical order for pre-display_order attempts.
   const reviewResult = await env.DB.prepare(
     `SELECT a.question_code, a.selected_option, a.is_correct, a.display_order,
-            g.canonical_number, p.part_code,
+            a.text_response, a.audio_r2_key, a.transcript_text, a.ai_mark_json, a.ai_band_key,
+            g.canonical_number, g.response_type, p.part_code, d.key AS dimension_key,
             q.prompt_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer
      FROM test_attempt_answers a
      JOIN question_groups g ON g.id = a.question_group_id
      JOIN test_parts p ON p.id = g.test_part_id
      JOIN questions q ON q.id = a.question_id
+     LEFT JOIN dimensions d ON d.id = g.dimension_id
      WHERE a.test_attempt_id = ?
      ORDER BY COALESCE(a.display_order, g.canonical_number)`,
   )
@@ -658,8 +800,15 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
       selected_option: string | null;
       is_correct: number | null;
       display_order: number | null;
+      text_response: string | null;
+      audio_r2_key: string | null;
+      transcript_text: string | null;
+      ai_mark_json: string | null;
+      ai_band_key: string | null;
       canonical_number: number;
+      response_type: string;
       part_code: string;
+      dimension_key: string | null;
       prompt_text: string;
       option_a: string;
       option_b: string;
@@ -668,18 +817,38 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
       correct_answer: string;
     }>();
 
+  const gradeRow = await env.DB.prepare('SELECT grading_status FROM test_attempts WHERE id = ?')
+    .bind(attemptId)
+    .first<{ grading_status: string }>();
+
   return {
     variables: report ? (JSON.parse(report.variables) as ReportVariablesV1) : null,
-    review: (reviewResult.results ?? []).map((row) => ({
-      questionCode: row.question_code,
-      partCode: row.part_code,
-      canonicalNumber: row.canonical_number,
-      displayOrder: row.display_order,
-      prompt: row.prompt_text,
-      options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
-      correctAnswer: row.correct_answer,
-      selectedOption: row.selected_option,
-      isCorrect: row.is_correct,
-    })),
+    gradingStatus: gradeRow?.grading_status ?? 'none',
+    review: (reviewResult.results ?? []).map((row) => {
+      let aiMark: unknown = null;
+      try {
+        aiMark = row.ai_mark_json ? JSON.parse(row.ai_mark_json) : null;
+      } catch {
+        aiMark = null;
+      }
+      return {
+        questionCode: row.question_code,
+        partCode: row.part_code,
+        canonicalNumber: row.canonical_number,
+        displayOrder: row.display_order,
+        responseType: row.response_type ?? 'mcq',
+        dimensionKey: row.dimension_key,
+        prompt: row.prompt_text,
+        options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
+        correctAnswer: row.correct_answer,
+        selectedOption: row.selected_option,
+        isCorrect: row.is_correct,
+        textResponse: row.text_response,
+        audioUrl: row.audio_r2_key ? `/api/assets/responses/${row.audio_r2_key.replace(/^responses\//, '')}` : null,
+        transcriptText: row.transcript_text,
+        aiBandKey: row.ai_band_key,
+        aiMark,
+      };
+    }),
   };
 }

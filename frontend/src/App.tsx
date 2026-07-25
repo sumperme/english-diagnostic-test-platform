@@ -7,6 +7,8 @@ import { QuizScreen } from './screens/QuizScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
 import { Test2QuizScreen } from './screens/Test2QuizScreen';
 import { Test2ResultsScreen } from './screens/Test2ResultsScreen';
+import { Test3QuizScreen } from './screens/Test3QuizScreen';
+import { Test3ResultsScreen } from './screens/Test3ResultsScreen';
 import { VoucherScreen } from './screens/VoucherScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { TeacherDashboardScreen } from './screens/TeacherDashboardScreen';
@@ -136,7 +138,18 @@ export function App() {
         />
       ) : null}
       {screen === 'quiz' && info && session ? (
-        info.testCode === '02' ? (
+        info.testCode === '03' ? (
+          <Test3QuizScreen
+            candidateInfo={info}
+            session={session}
+            onBack={() => setScreen('info')}
+            onSubmit={(nextResult) => {
+              setTest2Result(nextResult);
+              setResult(null);
+              setScreen('results');
+            }}
+          />
+        ) : info.testCode === '02' ? (
           <Test2QuizScreen
             candidateInfo={info}
             session={session}
@@ -164,7 +177,11 @@ export function App() {
         <ResultsScreen result={result} session={session} onHome={goHomeFromApp} />
       ) : null}
       {screen === 'results' && !result && test2Result && session ? (
-        <Test2ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
+        test2Result.variables?.testCode === '03' ? (
+          <Test3ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
+        ) : (
+          <Test2ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
+        )
       ) : null}
     </>
   );

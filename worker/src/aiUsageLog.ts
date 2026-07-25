@@ -1,5 +1,5 @@
 // DeepSeek API usage logging for admin spending visibility.
-// Rates are for deepseek-chat (V4-Flash non-thinking, cache-miss input).
+// Rates are for deepseek-v4-flash (cache-miss input / output).
 // Stored at insert time so historical rows stay stable if pricing changes.
 
 export type AiFeatureType = 'student_feedback' | 'class_overview';
@@ -16,7 +16,7 @@ export type AiUsageLogEnv = {
   DB: D1Database;
 };
 
-/** USD per 1M tokens — deepseek-chat cache-miss input / output (DeepSeek docs). */
+/** USD per 1M tokens — deepseek-v4-flash cache-miss input / output (DeepSeek docs). */
 const INPUT_COST_PER_M = 0.14;
 const OUTPUT_COST_PER_M = 0.28;
 

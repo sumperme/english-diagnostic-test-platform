@@ -65,6 +65,14 @@ export const PAPER2_PART_KNOWLEDGE = {
     'Part B Reading: texts of various genres; understanding specific information, text organization features, implication, tone and text structure.',
 };
 
+/** Paper III part-level notes when dimensions are empty (band-only reports). */
+export const PAPER3_PART_KNOWLEDGE = {
+  speaking:
+    'Part A Speaking: sustained turns on personal, abstract and persuasive topics; clarity, fluency, organisation, and appropriate register under one-shot recording conditions.',
+  writing:
+    'Part B Writing: summary/response and argumentative essay; coherent paragraphs, precise vocabulary, and controlled complex grammar for academic/professional purposes.',
+};
+
 /** Shared framing for both papers (from the test introductions). */
 export const TEST_PURPOSE =
   'The English Diagnostic Test helps ESL/EFL learners near the end of secondary education diagnose weaknesses before pursuing university programmes delivered in English. Items align with CEFR C1 and C2; C2 is required in demanding academic and professional settings.';

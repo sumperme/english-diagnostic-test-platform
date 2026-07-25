@@ -25,3 +25,14 @@ bucket_name = "edt-assets"
 ALLOWED_ORIGIN = "https://eng-diagnostic.tzy667.workers.dev"
 SESSION_TTL_SECONDS = "7200"
 ADMIN_PASSWORD = "EDT-Aa2026!"
+
+# Paper III grading queue (AssemblyAI webhook / submit wake the consumer).
+[[queues.producers]]
+binding = "PAPER3_GRADE"
+queue = "edt-paper3-grade"
+
+[[queues.consumers]]
+queue = "edt-paper3-grade"
+max_batch_size = 1
+max_retries = 20
+max_concurrency = 2

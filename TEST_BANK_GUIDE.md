@@ -111,6 +111,20 @@ Per-part conversion grids (`score_conversion_bands`, from the corrected client c
 
 Overall level = average of the two part bands: both ≥ C1 → overall C1/C2; one B2 + one C1 → high B2/low C1; both B2 → B2. Present all mappings as **indicative**, never exact (see the proficiency disclaimer in i18n).
 
+### Test 3 — Paper III Speaking & Writing (`test_code='03'`, status `active`)
+
+| Concept | Value |
+|---------|-------|
+| Total question groups | **10** (`GGG` 001–010) |
+| Part A (`PP='01'`, speaking) | 8 groups; Tasks 1–7 have prompt audio; Task 8 is prep + speak |
+| Part B (`PP='02'`, writing) | 2 groups (summary/response + argumentative essay) |
+| Dimensions | One skill key per task (immutable) |
+| Response types | `question_groups.response_type` = `speaking` \| `writing` |
+| Audio prompts | R2 `audio/test-03/Speaking_Prompt_Task_N.mp3` |
+| Student recordings | R2 `responses/test-03/{attemptId}/{questionCode}.webm` (metadata only in D1) |
+| STT | AssemblyAI verbatim on each upload (webhook + Queue); secret `ASSEMBLYAI_API_KEY` |
+| Scoring | DeepSeek rubric JSON marks → CEFR bands `b1b2` / `c1` / `c2`; async `grading_status` |
+
 ---
 
 ## 4. Feedback and reports

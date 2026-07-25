@@ -127,6 +127,7 @@ function isTeacherDraftChanged(draft: TeacherDraft, cred: AdminTeacherCredential
 function formatPaperLabel(testCode: string | null): string {
   if (testCode === '01') return 'Paper I';
   if (testCode === '02') return 'Paper II';
+  if (testCode === '03') return 'Paper III';
   return '—';
 }
 
@@ -450,6 +451,9 @@ export function AdminScreen() {
                   <p className="mt-1 text-sm font-semibold text-edt-forest">
                     Test 2: <span className="text-2xl font-extrabold">{summary.usedTest2}</span>
                   </p>
+                  <p className="mt-1 text-sm font-semibold text-edt-forest">
+                    Test 3: <span className="text-2xl font-extrabold">{summary.usedTest3 ?? 0}</span>
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-5">
                   <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Submissions</p>
@@ -458,6 +462,9 @@ export function AdminScreen() {
                   </p>
                   <p className="mt-1 text-sm font-semibold text-edt-forest">
                     Test 2: <span className="text-2xl font-extrabold">{summary.submissionsTest2}</span>
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-edt-forest">
+                    Test 3: <span className="text-2xl font-extrabold">{summary.submissionsTest3 ?? 0}</span>
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -548,6 +555,7 @@ export function AdminScreen() {
                       <th className="px-3 py-2">Code</th>
                       <th className="px-3 py-2">Test 1</th>
                       <th className="px-3 py-2">Test 2</th>
+                      <th className="px-3 py-2">Test 3</th>
                       <th className="px-3 py-2">Uses allowed</th>
                       <th className="px-3 py-2">
                         <button
@@ -590,6 +598,13 @@ export function AdminScreen() {
                               className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${perTestStatusBadgeClass(voucher.useCountTest2 ?? 0, voucher.usesAllowed ?? 1)}`}
                             >
                               {formatPerTestStatus(voucher.useCountTest2 ?? 0, voucher.usesAllowed ?? 1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${perTestStatusBadgeClass(voucher.useCountTest3 ?? 0, voucher.usesAllowed ?? 1)}`}
+                            >
+                              {formatPerTestStatus(voucher.useCountTest3 ?? 0, voucher.usesAllowed ?? 1)}
                             </span>
                           </td>
                           <td className="px-3 py-3">
@@ -808,6 +823,7 @@ export function AdminScreen() {
                       <th className="px-3 py-2 text-right"># Vouchers</th>
                       <th className="px-3 py-2 text-right">Test 1 Used / Allowed</th>
                       <th className="px-3 py-2 text-right">Test 2 Used / Allowed</th>
+                      <th className="px-3 py-2 text-right">Test 3 Used / Allowed</th>
                       <th className="px-3 py-2 text-right">AI Uses (used / allowed)</th>
                       <th className="px-3 py-2">Remark</th>
                       <th className="px-3 py-2" />
@@ -839,6 +855,9 @@ export function AdminScreen() {
                           </td>
                           <td className="px-3 py-3 text-right text-xs font-semibold">
                             {cred.totalUseCountTest2}/{cred.totalUsesAllowed}
+                          </td>
+                          <td className="px-3 py-3 text-right text-xs font-semibold">
+                            {cred.totalUseCountTest3 ?? 0}/{cred.totalUsesAllowed}
                           </td>
                           <td className="px-3 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">

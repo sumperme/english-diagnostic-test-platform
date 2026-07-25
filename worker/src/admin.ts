@@ -17,6 +17,7 @@ type VoucherRow = {
   use_count: number;
   use_count_test1: number;
   use_count_test2: number;
+  use_count_test3: number;
 };
 
 type TeacherCredentialRow = {
@@ -29,6 +30,7 @@ type TeacherCredentialRow = {
   total_uses_allowed: number;
   total_use_count_test1: number;
   total_use_count_test2: number;
+  total_use_count_test3: number;
   ai_uses_allowed: number;
   ai_use_count: number;
 };
@@ -36,10 +38,12 @@ type TeacherCredentialRow = {
 const VOUCHER_SELECT_SQL = `SELECT v.code, v.used_at, v.used_by_session, v.user_group, v.education_level, v.remark, v.sold_to,
                                     v.uses_allowed, v.use_count,
                                     COALESCE(vtu1.use_count, 0) AS use_count_test1,
-                                    COALESCE(vtu2.use_count, 0) AS use_count_test2
+                                    COALESCE(vtu2.use_count, 0) AS use_count_test2,
+                                    COALESCE(vtu3.use_count, 0) AS use_count_test3
                              FROM vouchers v
                              LEFT JOIN voucher_test_usage vtu1 ON vtu1.voucher_code = v.code AND vtu1.test_id = 1
-                             LEFT JOIN voucher_test_usage vtu2 ON vtu2.voucher_code = v.code AND vtu2.test_id = 2`;
+                             LEFT JOIN voucher_test_usage vtu2 ON vtu2.voucher_code = v.code AND vtu2.test_id = 2
+                             LEFT JOIN voucher_test_usage vtu3 ON vtu3.voucher_code = v.code AND vtu3.test_id = 3`;
 
 const DEFAULT_USER_GROUP = 'General Learner';
 
@@ -109,6 +113,7 @@ function mapVoucher(row: VoucherRow) {
   const useCount = Number(row.use_count ?? 0);
   const useCountTest1 = Number(row.use_count_test1 ?? 0);
   const useCountTest2 = Number(row.use_count_test2 ?? 0);
+  const useCountTest3 = Number(row.use_count_test3 ?? 0);
   return {
     code: row.code,
     used: useCount >= usesAllowed,
@@ -117,6 +122,7 @@ function mapVoucher(row: VoucherRow) {
     useCount,
     useCountTest1,
     useCountTest2,
+    useCountTest3,
     userGroup: row.user_group || DEFAULT_USER_GROUP,
     educationLevel: row.education_level,
     remark: row.remark,
@@ -135,6 +141,7 @@ function mapTeacherCredential(row: TeacherCredentialRow) {
     totalUsesAllowed: Number(row.total_uses_allowed ?? 0),
     totalUseCountTest1: Number(row.total_use_count_test1 ?? 0),
     totalUseCountTest2: Number(row.total_use_count_test2 ?? 0),
+    totalUseCountTest3: Number(row.total_use_count_test3 ?? 0),
     aiUsesAllowed: Number(row.ai_uses_allowed ?? 20),
     aiUseCount: Number(row.ai_use_count ?? 0),
   };
@@ -160,12 +167,21 @@ export async function adminSummary(_request: Request, env: AdminEnv, origin: str
      FROM voucher_test_usage WHERE test_id = 2 AND use_count > 0`,
   ).first<{ count: number }>();
 
+  const usedTest3Row = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT voucher_code) AS count
+     FROM voucher_test_usage WHERE test_id = 3 AND use_count > 0`,
+  ).first<{ count: number }>();
+
   const submissionsTest1Row = await env.DB.prepare(
     'SELECT COUNT(*) AS count FROM submissions',
   ).first<{ count: number }>();
 
   const submissionsTest2Row = await env.DB.prepare(
     `SELECT COUNT(*) AS count FROM test_attempts WHERE test_id = 2 AND status = 'completed'`,
+  ).first<{ count: number }>();
+
+  const submissionsTest3Row = await env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM test_attempts WHERE test_id = 3 AND status = 'completed'`,
   ).first<{ count: number }>();
 
   return json(
@@ -176,8 +192,10 @@ export async function adminSummary(_request: Request, env: AdminEnv, origin: str
       assigned: Number(row?.assigned ?? 0),
       usedTest1: Number(usedTest1Row?.count ?? 0),
       usedTest2: Number(usedTest2Row?.count ?? 0),
+      usedTest3: Number(usedTest3Row?.count ?? 0),
       submissionsTest1: Number(submissionsTest1Row?.count ?? 0),
       submissionsTest2: Number(submissionsTest2Row?.count ?? 0),
+      submissionsTest3: Number(submissionsTest3Row?.count ?? 0),
     },
     undefined,
     origin,
@@ -330,7 +348,8 @@ export async function adminListTeacherCredentials(_request: Request, env: AdminE
        COALESCE(SUM(v.use_count), 0) AS total_use_count,
        COALESCE(SUM(v.uses_allowed), 0) AS total_uses_allowed,
        COALESCE(SUM(CASE WHEN vtu.test_id = 1 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test1,
-       COALESCE(SUM(CASE WHEN vtu.test_id = 2 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test2
+       COALESCE(SUM(CASE WHEN vtu.test_id = 2 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test2,
+       COALESCE(SUM(CASE WHEN vtu.test_id = 3 THEN vtu.use_count ELSE 0 END), 0) AS total_use_count_test3
      FROM teacher_credentials tc
      LEFT JOIN vouchers v ON v.user_group = tc.user_group
      LEFT JOIN voucher_test_usage vtu ON vtu.voucher_code = v.code

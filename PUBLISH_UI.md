@@ -27,6 +27,7 @@ The script will:
 2. Show changed files and ask for a **commit message**
 3. `git commit` + `git push origin main`
 4. Cloudflare **Workers Builds** picks up the push and deploys (~2–5 minutes)
+5. Print a **post-publish checklist** (D1 / R2 / secrets / Queue). When the commit includes Paper III–related paths, that checklist is highlighted.
 
 ### Options
 
@@ -37,6 +38,22 @@ The script will:
 | `.\scripts\publish-ui.ps1 -DeployLocal` | Also run `wrangler deploy` on your PC (bypass slow CI or emergency fix) |
 
 The script stages **only publishable files** (frontend, worker, migrations, docs). It skips vouchers, build output, Wrangler state, and local-only scripts such as `scripts/local-preview.ps1`.
+
+---
+
+## Paper III go-live checklist (dataset beyond UI)
+
+A UI-only push does **not** activate Paper III on production data. After publishing code that introduces or updates Paper III, run these once (or when the relevant assets/migrations change):
+
+| Step | Command / action | Why |
+|------|------------------|-----|
+| 1. D1 migrations | `.\scripts\migrate-remote-db.ps1 -SkipCleanse` | Apply `0014`–`0019` (schema, seed, activate, class-overview `test_code`, prompt copy). **`-SkipCleanse` keeps live attempts.** |
+| 2. R2 audio | `.\scripts\upload-assets.ps1` | Paper III prompts + start/stop beeps under `audio/test-03/` (plus Paper II MP3s / fonts if missing) |
+| 3. Secrets | `npx wrangler secret put DEEPSEEK_API_KEY` / `ASSEMBLYAI_API_KEY` / `ASSEMBLYAI_WEBHOOK_SECRET` | Grading + STT (never commit keys) |
+| 4. Queue | Confirm deploy log shows `PAPER3_GRADE` / queue `edt-paper3-grade` | Async Paper III marking |
+| 5. Verify | Incognito: paper picker shows Paper III; mic/speaker gate loads | End-to-end smoke check |
+
+Expected bank size after migrate: **3 tests**, **145** question groups / questions (`90 + 45 + 10`).
 
 ---
 
@@ -81,7 +98,9 @@ env.R2_ASSETS (edt-assets)   R2 Bucket
 env.ASSETS                   Assets
 ```
 
-If `env.R2_ASSETS` is missing from the log, Paper II audio and PDF downloads will fail in production — check that the root `wrangler.toml` still contains the `[[r2_buckets]]` block.
+Also look for the Paper III queue producer/consumer (`PAPER3_GRADE` / `edt-paper3-grade`) when that binding is in `wrangler.toml`.
+
+If `env.R2_ASSETS` is missing from the log, Paper II/III audio and PDF downloads will fail in production — check that the root `wrangler.toml` still contains the `[[r2_buckets]]` block.
 
 ### 4. If Cloudflare build fails
 
@@ -103,13 +122,15 @@ If `env.R2_ASSETS` is missing from the log, Paper II audio and PDF downloads wil
 
 ### 6. If you changed the database schema or test content (D1 migrations)
 
-The question banks for **both papers live in D1** and ship as migrations (`0006`–`0008` created the unified schema + Test 1/Test 2 content; `0009`–`0010` added per-test voucher usage and activated Paper II). UI publish does **not** apply D1 migrations automatically. After a migration is merged to `main`, run once:
+The question banks for **all three papers live in D1** and ship as migrations (`0006`–`0008` unified schema + Papers I/II; `0009`–`0010` per-test voucher usage + activate Paper II; `0014`–`0019` Paper III schema/seed/activate + prompt copy + class-overview `test_code`). UI publish does **not** apply D1 migrations automatically. After a migration is merged to `main`, run once:
 
 ```powershell
-.\scripts\migrate-remote-db.ps1
+.\scripts\migrate-remote-db.ps1 -SkipCleanse
 ```
 
-That script backs up remote D1 to `db_backup/`, applies pending migrations, optionally cleanses candidate data (submissions/sessions/attempts — vouchers and teacher credentials are kept; add `-SkipCleanse` to keep results), and verifies the row counts.
+Use plain `.\scripts\migrate-remote-db.ps1` only when you intentionally want a backup **and** a cleanse of candidate data (submissions/sessions/attempts — vouchers and teacher credentials are kept). Prefer **`-SkipCleanse`** for additive Paper III go-live so existing results stay intact.
+
+That script backs up remote D1 to `db_backup/` (unless `-SkipBackup`), applies pending migrations, optionally cleanses, and verifies row counts (**3 tests**, **145** groups/questions).
 
 Manual equivalent (no backup, no cleanse):
 
@@ -120,9 +141,15 @@ npx wrangler d1 migrations apply edt-diagnostic --remote -c wrangler.toml
 
 For local preview, migrations run automatically via `local-preview.ps1`.
 
-### 7. If you changed R2 assets (Paper II audio / PDF fonts)
+### 7. If you changed R2 assets (Paper II / Paper III audio / PDF fonts)
 
-Production audio clips (21 MP3s: 20 listening tracks + the sound-check track `20260701_00_Testing_volume.mp3`) and the report-PDF fonts live in the `edt-assets` R2 bucket, not in git. After adding or replacing MP3s in `Client_Feedback/Audio Tracks/` (or changing fonts), upload once to remote R2:
+Production audio lives in the `edt-assets` R2 bucket, not in git:
+
+- **Paper II:** 21 MP3s (20 listening tracks + sound-check `20260701_00_Testing_volume.mp3`)
+- **Paper III:** 7 speaking prompts + `Recording_Start_Sound_3Sec.mp3` / `Recording_Stop_Sound.mp3` under `audio/test-03/`
+- **Fonts:** Montserrat + Noto Serif TC for PDF reports
+
+After adding or replacing masters in `Client_Feedback/` (or changing fonts), upload once to remote R2:
 
 ```powershell
 .\scripts\upload-assets.ps1
@@ -160,7 +187,7 @@ These stay local and are skipped by `publish-ui.ps1` (and/or `.gitignore`):
 - `frontend/dist/` (built on Cloudflare during deploy)
 - `.dev.vars`, `.wrangler/`, `worker/.wrangler/`, `.cursor/`, `Client_Feedback/` (incl. audio masters)
 
-These **can** be committed when changed: `PUBLISH_UI.md`, `scripts/publish-ui.ps1`, `scripts/upload-assets.ps1`, `scripts/migrate-remote-db.ps1`, the seed generators (`scripts/generate-test1-seed.mjs`, `scripts/generate-test2-seed.mjs`, `scripts/test2-content.mjs`), worker/frontend code, `migrations/`, and the docs (`README.md`, `DATABASE_README.md`, `TEST_BANK_GUIDE.md`, `AGENTS.md`).
+These **can** be committed when changed: `PUBLISH_UI.md`, `scripts/publish-ui.ps1`, `scripts/upload-assets.ps1`, `scripts/migrate-remote-db.ps1`, the seed generators (`scripts/generate-test1-seed.mjs`, `scripts/generate-test2-seed.mjs`, `scripts/generate-test3-seed.mjs`, `scripts/test2-content.mjs`), worker/frontend code, `migrations/` (through `0019`), and the docs (`README.md`, `DATABASE_README.md`, `TEST_BANK_GUIDE.md`, `AGENTS.md`).
 
 ---
 
@@ -180,15 +207,16 @@ npm run preview:local
 
 The script will:
 
-1. Apply local D1 migrations — this includes the **full question banks for Paper I and Paper II** (unified schema, attempts tables, `voucher_test_usage`), so a fresh machine gets a complete test platform
+1. Apply local D1 migrations through **`0019`** — full banks for **Papers I–III** (unified schema, attempts tables, `voucher_test_usage`, Paper III schema/seed/activate + prompt copy)
 2. Seed vouchers from `Evouchers.txt` (or `TEST-LOCAL-001` if absent) and a teacher credential into the **local** database
-3. Reset voucher usage and wipe local attempts/reports/sessions, so every voucher can sit **both papers** again (3 attempts per paper per run)
-4. Check the **local R2 simulation** and, if missing, seed the 20 Paper II listening MP3s and the report-PDF fonts (first run downloads the fonts once into `.fonts-cache/`)
-5. Start `npm run worker:dev` (Terminal 1)
-6. Start `npm run dev` (Terminal 2)
-7. Open http://localhost:5173
+3. Reset voucher usage and wipe local attempts/reports/sessions, so every voucher can sit **each paper** again (3 attempts per paper per run)
+4. Check the **local R2 simulation** and, if missing, seed Paper II listening MP3s, Paper III speaking prompts + beeps, and report-PDF fonts (first run downloads the fonts once into `.fonts-cache/`)
+5. Require `worker/.dev.vars` keys for Paper III local STT/grading (`ASSEMBLYAI_API_KEY`, `DEEPSEEK_API_KEY`, `ASSEMBLYAI_WEBHOOK_SECRET`)
+6. Start `npm run worker:dev` (Terminal 1)
+7. Start `npm run dev` (Terminal 2)
+8. Open http://localhost:5173
 
-Use any code from `Evouchers.txt` (e.g. `4K2M-9R7T-1F5P`), then on the info screen pick **Paper I** (grammar & vocabulary, classic flow) or **Paper II** (listening & reading — once-only audio playback, reading passages, server-side scoring, and the **Download PDF** button rendered by the local Worker). Vite proxies `/api/*` — including audio streaming and the PDF download — to `http://127.0.0.1:8787`.
+Use any code from `Evouchers.txt` (e.g. `4K2M-9R7T-1F5P`), then on the info screen pick **Paper I**, **Paper II**, or **Paper III**. Vite proxies `/api/*` — including audio streaming and PDF download — to `http://127.0.0.1:8787`.
 
 Admin UI locally: http://localhost:5173/admin (same `ADMIN_PASSWORD` as production).
 
@@ -200,7 +228,7 @@ Options:
 | `.\scripts\local-preview.ps1 -SkipAssets` | Skip the R2 asset check (fastest, if audio/PDF not needed) |
 | `.\scripts\local-preview.ps1 -ReseedAssets` | Force re-upload of audio + fonts to local R2 |
 
-Note: the local Worker uses `worker/wrangler.toml`, which declares the same `DB` and `R2_ASSETS` bindings as production but stores everything under `worker/.wrangler/state` — completely separate from Cloudflare.
+Note: the local Worker uses `worker/wrangler.toml`, which declares the same `DB`, `R2_ASSETS`, and `PAPER3_GRADE` bindings as production but stores everything under `worker/.wrangler/state` — completely separate from Cloudflare.
 
 ---
 

@@ -74,4 +74,8 @@ export type AttemptAnswerRow = {
   option_c: string;
   option_d: string;
   correct_answer: string;
+  response_type?: string | null;
+  text_response?: string | null;
+  ai_band_key?: string | null;
+  ai_mark_json?: string | null;
 };

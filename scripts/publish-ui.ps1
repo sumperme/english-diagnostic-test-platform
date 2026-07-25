@@ -157,6 +157,63 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Push OK." -ForegroundColor Green
 
+# --- Post-publish dataset checklist (Paper III + shared D1/R2 surface) ---
+function Test-Paper3RelatedPath([string]$path) {
+    $n = ($path -replace '\\', '/')
+    return (
+        $n -match 'migrations/001[4-9]' -or
+        $n -match '(?i)paper3' -or
+        $n -match '(?i)test-?03' -or
+        $n -match '(?i)Test3' -or
+        $n -match '(?i)ASSEMBLYAI' -or
+        $n -match '(?i)paper3Grade|PAPER3_GRADE' -or
+        $n -eq 'wrangler.toml' -or
+        $n -eq 'worker/wrangler.toml'
+    )
+}
+
+$paper3Touched = $false
+foreach ($p in $staged) {
+    if (Test-Paper3RelatedPath $p) {
+        $paper3Touched = $true
+        break
+    }
+}
+
+Write-Host ""
+if ($paper3Touched) {
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host " Paper III / dataset changes were in this commit" -ForegroundColor Yellow
+    Write-Host " UI push alone does NOT update remote D1 or R2." -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+} else {
+    Write-Host "========================================" -ForegroundColor Green
+    Write-Host " Published to GitHub (main)" -ForegroundColor Green
+    Write-Host " Cloudflare Workers Builds will deploy automatically." -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Green
+}
+
+if ($paper3Touched) {
+    Write-Host ""
+    Write-Host " Published to GitHub (main). Cloudflare will deploy the Worker/UI." -ForegroundColor Green
+}
+
+Write-Host ""
+Write-Host "Production URL: https://eng-diagnostic.tzy667.workers.dev"
+Write-Host ""
+Write-Host "Next (manual):"
+Write-Host "  1. Cloudflare Dashboard -> Workers & Pages -> eng-diagnostic -> Deployments (wait for Success)"
+Write-Host "  2. Open the site in an incognito window to verify UI changes"
+Write-Host ""
+Write-Host "Dataset checklist (required when D1 / R2 / Paper III secrets change):"
+Write-Host "  - D1:   .\scripts\migrate-remote-db.ps1 -SkipCleanse   # apply through 0019; keep live attempts"
+Write-Host "  - R2:   .\scripts\upload-assets.ps1                    # Paper II + Paper III audio/test-03 + fonts"
+Write-Host "  - Secrets: DEEPSEEK_API_KEY, ASSEMBLYAI_API_KEY, ASSEMBLYAI_WEBHOOK_SECRET"
+Write-Host "  - Queue: confirm PAPER3_GRADE / edt-paper3-grade on the deploy log"
+Write-Host "  - Expect after migrate: 3 tests, 145 question groups/questions"
+Write-Host ""
+Write-Host "Details: PUBLISH_UI.md (Paper III go-live checklist)"
+
 if ($DeployLocal) {
     Write-Step "Deploying to Cloudflare locally (wrangler)..."
     npx wrangler deploy -c wrangler.toml
@@ -167,18 +224,3 @@ if ($DeployLocal) {
     }
     Write-Host "Local deploy OK." -ForegroundColor Green
 }
-
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Host " Published to GitHub (main)" -ForegroundColor Green
-Write-Host " Cloudflare Workers Builds will deploy automatically." -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Production URL: https://eng-diagnostic.tzy667.workers.dev"
-Write-Host ""
-Write-Host "Next (manual, ~2-3 min):"
-Write-Host "  1. Open Cloudflare Dashboard -> Workers & Pages -> eng-diagnostic -> Deployments"
-Write-Host "  2. Wait until the latest build shows Success"
-Write-Host "  3. Open the site in an incognito window to verify UI changes"
-Write-Host ""
-Write-Host "Details: PUBLISH_UI.md"

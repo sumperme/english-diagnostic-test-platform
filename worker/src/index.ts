@@ -2,6 +2,8 @@ import { computePercentileStats, handleAdminRequest } from './admin';
 import { handleAiRequest } from './aiFeedback';
 import { handleAssetRequest } from './assets';
 import { handleAttemptRequest } from './attempts';
+import { handlePaper3Queue, type GradeJobMessage } from './paper3Grading';
+import { handlePaper3Route } from './paper3Routes';
 import { handleReportRequest } from './reports';
 import { dualWriteTest1Attempt, type Test1SubmissionPayload } from './test1DualWrite';
 
@@ -9,11 +11,21 @@ type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
   R2_ASSETS: R2Bucket;
+  PAPER3_GRADE?: Queue;
   ALLOWED_ORIGIN?: string;
   SESSION_TTL_SECONDS?: string;
   ADMIN_PASSWORD?: string;
   /** Secret: `npx wrangler secret put DEEPSEEK_API_KEY` / worker/.dev.vars locally. */
   DEEPSEEK_API_KEY?: string;
+  /** Secret: `npx wrangler secret put ASSEMBLYAI_API_KEY` */
+  ASSEMBLYAI_API_KEY?: string;
+  /** Secret: webhook auth header value for AssemblyAI callbacks (X-Edt-Webhook-Secret) */
+  ASSEMBLYAI_WEBHOOK_SECRET?: string;
+  /**
+   * Public HTTPS origin for AssemblyAI webhook_url (production only).
+   * Unset locally — grading queue polls transcript status instead.
+   */
+  ASSEMBLYAI_WEBHOOK_BASE?: string;
 };
 
 type VerifyVoucherRequest = {
@@ -560,10 +572,65 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
       dimensionStats,
       submissions: submissionRows,
       questionStats,
+      paperAttempts: await loadTeacherPaperAttempts(env, userGroup),
     },
     undefined,
     origin,
   );
+}
+
+async function loadTeacherPaperAttempts(env: Env, userGroup: string) {
+  const result = await env.DB.prepare(
+    `SELECT a.id AS attempt_id, a.end_time, a.grading_status, t.test_code, t.name AS test_name,
+            u.display_name, u.external_ref, ar.variables
+     FROM test_attempts a
+     JOIN tests t ON t.id = a.test_id
+     LEFT JOIN users u ON u.id = a.user_id
+     LEFT JOIN attempt_reports ar ON ar.test_attempt_id = a.id
+     WHERE a.status = 'completed' AND t.test_code IN ('02', '03')
+       AND (u.user_group = ? OR a.session_token IN (
+         SELECT token FROM sessions s JOIN vouchers v ON v.code = s.voucher_code WHERE v.user_group = ?
+       ))
+     ORDER BY a.end_time DESC`,
+  )
+    .bind(userGroup, userGroup)
+    .all<{
+      attempt_id: string;
+      end_time: number | null;
+      grading_status: string;
+      test_code: string;
+      test_name: string;
+      display_name: string | null;
+      external_ref: string | null;
+      variables: string | null;
+    }>();
+
+  return (result.results ?? []).map((row) => {
+    let overallBand: string | null = null;
+    let partBands: Array<{ partCode: string; cefrLabel: string }> = [];
+    try {
+      if (row.variables) {
+        const v = JSON.parse(row.variables) as {
+          bands?: { overall?: { cefrLabel?: string }; parts?: Array<{ partCode: string; cefrLabel: string }> };
+        };
+        overallBand = v.bands?.overall?.cefrLabel ?? null;
+        partBands = v.bands?.parts ?? [];
+      }
+    } catch {
+      /* ignore */
+    }
+    return {
+      attemptId: row.attempt_id,
+      testCode: row.test_code,
+      testName: row.test_name,
+      candidateName: row.display_name ?? 'Candidate',
+      candidateRef: row.external_ref ?? '',
+      submittedAt: row.end_time,
+      gradingStatus: row.grading_status,
+      overallBand,
+      partBands,
+    };
+  });
 }
 
 export default {
@@ -592,6 +659,11 @@ export default {
       const assetResponse = await handleAssetRequest(request, env, origin, json);
       if (assetResponse) {
         return assetResponse;
+      }
+
+      const paper3Response = await handlePaper3Route(request, env, ctx, origin, json);
+      if (paper3Response) {
+        return paper3Response;
       }
 
       // Before the attempts router: it owns /api/attempts/:id/ai-feedback,
@@ -638,5 +710,9 @@ export default {
       console.error(JSON.stringify({ message: 'Unhandled Worker error', error: error instanceof Error ? error.message : String(error) }));
       return json({ error: 'Internal server error' }, { status: 500 }, origin);
     }
+  },
+
+  async queue(batch: MessageBatch<GradeJobMessage>, env: Env): Promise<void> {
+    await handlePaper3Queue(batch, env);
   },
 };

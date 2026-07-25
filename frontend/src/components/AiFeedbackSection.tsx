@@ -163,7 +163,7 @@ export function AiFeedbackSection({
     <div className="space-y-5">
       {/* AI feedback section: hidden until first interaction */}
       {revealed ? (
-        <section className="mx-auto w-full max-w-3xl">
+        <section className="mx-auto w-full max-w-5xl">
           <h3 className="mb-3 flex items-center justify-center gap-2 text-center text-xs font-bold uppercase tracking-widest text-edt-indigo">
             <SparkleIcon className="h-4 w-4" />
             {t.report.aiSectionTitle}

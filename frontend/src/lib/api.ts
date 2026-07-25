@@ -176,6 +176,39 @@ export async function saveAttemptAnswer(
   );
 }
 
+export async function saveAttemptTextAnswer(
+  attemptId: string,
+  questionCode: string,
+  textResponse: string,
+  sessionToken: string,
+): Promise<void> {
+  await parseJson<{ ok: boolean }>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/answers`, {
+      method: 'POST',
+      headers: bearerHeaders(sessionToken),
+      body: JSON.stringify({ questionCode, textResponse }),
+    }),
+  );
+}
+
+export async function uploadAttemptAudio(
+  attemptId: string,
+  questionCode: string,
+  blob: Blob,
+  sessionToken: string,
+): Promise<{ ok: boolean; saved: boolean; transcriptStatus?: string }> {
+  const form = new FormData();
+  form.append('questionCode', questionCode);
+  form.append('file', blob, `${questionCode}.webm`);
+  return parseJson(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/audio`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      body: form,
+    }),
+  );
+}
+
 export async function submitAttempt(
   attemptId: string,
   candidateInfo: { name: string; id: string },
@@ -219,10 +252,14 @@ export async function downloadServerReportPdf(
   lang: 'en' | 'zh-HK',
   sessionToken: string,
   fallbackFilename?: string,
+  teacherKey?: string,
 ): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (teacherKey) headers['X-Teacher-Key'] = teacherKey;
+  else headers.Authorization = `Bearer ${sessionToken}`;
   const response = await fetch(
     `${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf?lang=${encodeURIComponent(lang)}`,
-    { headers: { Authorization: `Bearer ${sessionToken}` } },
+    { headers },
   );
   if (!response.ok) {
     throw new ApiError('PDF_DOWNLOAD_FAILED', `PDF request failed (${response.status})`);
@@ -239,6 +276,26 @@ export async function downloadServerReportPdf(
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+export async function fetchProtectedAudioBlob(url: string, teacherKey: string): Promise<string> {
+  const response = await fetch(url.startsWith('http') ? url : `${API_BASE}${url}`, {
+    headers: { 'X-Teacher-Key': teacherKey },
+  });
+  if (!response.ok) throw new ApiError('AUDIO_FETCH_FAILED', `Audio failed (${response.status})`);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function fetchAttemptReportAsTeacher(
+  attemptId: string,
+  teacherKey: string,
+): Promise<AttemptReportPayload> {
+  return parseJson<AttemptReportPayload>(
+    await fetch(`${API_BASE}/api/attempts/${encodeURIComponent(attemptId)}/report`, {
+      headers: { 'X-Teacher-Key': teacherKey },
+    }),
+  );
 }
 
 // --- AI feedback (DeepSeek) ---
@@ -272,18 +329,26 @@ export async function startAiFeedback(attemptId: string, sessionToken: string): 
 
 export async function generateClassOverview(
   teacherKey: string,
+  testCode: '01' | '02' | '03' = '01',
 ): Promise<{ overview: Omit<ClassOverview, 'id'>; quota: AiQuota }> {
   return parseJson(
-    await fetch(`${API_BASE}/api/teacher/class-overview`, {
+    await fetch(`${API_BASE}/api/teacher/class-overview?testCode=${encodeURIComponent(testCode)}`, {
       method: 'POST',
-      headers: { 'X-Teacher-Key': teacherKey },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Teacher-Key': teacherKey,
+      },
+      body: JSON.stringify({ testCode }),
     }),
   );
 }
 
-export async function fetchClassOverviews(teacherKey: string): Promise<ClassOverviewList> {
+export async function fetchClassOverviews(
+  teacherKey: string,
+  testCode: '01' | '02' | '03' = '01',
+): Promise<ClassOverviewList> {
   return parseJson<ClassOverviewList>(
-    await fetch(`${API_BASE}/api/teacher/class-overviews`, {
+    await fetch(`${API_BASE}/api/teacher/class-overviews?testCode=${encodeURIComponent(testCode)}`, {
       headers: { 'X-Teacher-Key': teacherKey },
     }),
   );

@@ -5,7 +5,7 @@ import { fetchTestAvailability } from '../lib/api';
 import { heroBackgroundStyle } from '../lib/landingAssets';
 import type { CandidateInfo, MarketingPage, TestAvailability } from '../types';
 
-const PAPER_CODES = ['01', '02'] as const;
+const PAPER_CODES = ['01', '02', '03'] as const;
 
 export function InfoScreen({
   userGroup,
@@ -127,7 +127,7 @@ export function InfoScreen({
                   {t.test2.pickerTitle}
                 </label>
                 <p className="mb-4 text-xs text-edt-olive">{t.test2.pickerHint}</p>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {PAPER_CODES.map((code) => {
                     const remaining = availability(code);
                     const selectable = isSelectable(code);
