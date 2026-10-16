@@ -26,7 +26,7 @@ export function ConfirmModal({
             {answeredCount} / {total} {t.quiz.answered}
             {unanswered > 0 ? (
               <span className="font-medium text-amber-600">
-                . {unanswered} {t.report.unanswered}
+                . {unanswered} {t.quiz.unanswered}
               </span>
             ) : null}{' '}
             {t.quiz.submitBody}

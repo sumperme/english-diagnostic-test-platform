@@ -13,7 +13,8 @@ import { VoucherScreen } from './screens/VoucherScreen';
 import { AdminScreen } from './screens/AdminScreen';
 import { TeacherDashboardScreen } from './screens/TeacherDashboardScreen';
 import { loadTeacherSession, saveTeacherSession, verifyTeacherKey } from './lib/api';
-import type { CandidateInfo, MarketingPage, ReportResult, Session, TeacherSession, Test2Result } from './types';
+import { isMarketingPage } from './lib/marketingPages';
+import type { CandidateInfo, MarketingPage, Session, TeacherSession, Test2Result } from './types';
 
 type Screen =
   | 'landing'
@@ -25,12 +26,7 @@ type Screen =
   | 'results'
   | 'teacher';
 
-const MARKETING_PAGES: MarketingPage[] = ['learners', 'schools', 'universities', 'collaboration'];
 const DEFAULT_USER_GROUP = 'General Learner';
-
-function isMarketingPage(screen: Screen): screen is MarketingPage {
-  return MARKETING_PAGES.includes(screen as MarketingPage);
-}
 
 function isAdminPath() {
   return window.location.pathname === '/admin';
@@ -48,9 +44,10 @@ export function App() {
   // voucher is never auto-applied on a shared computer.
   const [session, setSession] = useState<Session | null>(null);
   const [info, setInfo] = useState<CandidateInfo | null>(null);
-  const [result, setResult] = useState<ReportResult | null>(null);
   const [test2Result, setTest2Result] = useState<Test2Result | null>(null);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(() => loadTeacherSession());
+  /** Section to scroll to after landing on a marketing page; cleared on plain navigation. */
+  const [marketingAnchor, setMarketingAnchor] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setIsAdmin(isAdminPath());
@@ -80,7 +77,10 @@ export function App() {
   }
 
   const goLanding = () => setScreen('landing');
-  const goMarketing = (page: MarketingPage) => setScreen(page);
+  const goMarketing = (page: MarketingPage, anchor?: string) => {
+    setMarketingAnchor(anchor);
+    setScreen(page);
+  };
   const goVoucher = () => setScreen(session ? 'info' : 'voucher');
   const goHomeFromApp = () => setScreen('landing');
   const userGroup = session?.userGroup ?? DEFAULT_USER_GROUP;
@@ -100,10 +100,11 @@ export function App() {
       {isMarketingPage(screen) ? (
         <MarketingScreen
           page={screen}
+          anchor={marketingAnchor}
           onNavigate={goMarketing}
           onLogin={goVoucher}
           onLogoClick={goLanding}
-          onTeacherLogin={screen === 'schools' ? handleTeacherLogin : undefined}
+          onTeacherLogin={screen === 'teachers' ? handleTeacherLogin : undefined}
         />
       ) : null}
       {screen === 'voucher' ? (
@@ -145,7 +146,6 @@ export function App() {
             onBack={() => setScreen('info')}
             onSubmit={(nextResult) => {
               setTest2Result(nextResult);
-              setResult(null);
               setScreen('results');
             }}
           />
@@ -156,7 +156,6 @@ export function App() {
             onBack={() => setScreen('info')}
             onSubmit={(nextResult) => {
               setTest2Result(nextResult);
-              setResult(null);
               setScreen('results');
             }}
           />
@@ -166,19 +165,17 @@ export function App() {
             session={session}
             onBack={() => setScreen('info')}
             onSubmit={(nextResult) => {
-              setResult(nextResult);
-              setTest2Result(null);
+              setTest2Result(nextResult);
               setScreen('results');
             }}
           />
         )
       ) : null}
-      {screen === 'results' && result && session ? (
-        <ResultsScreen result={result} session={session} onHome={goHomeFromApp} />
-      ) : null}
-      {screen === 'results' && !result && test2Result && session ? (
+      {screen === 'results' && test2Result && session ? (
         test2Result.variables?.testCode === '03' ? (
           <Test3ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
+        ) : test2Result.variables?.testCode === '01' ? (
+          <ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
         ) : (
           <Test2ResultsScreen result={test2Result} session={session} onHome={goHomeFromApp} />
         )

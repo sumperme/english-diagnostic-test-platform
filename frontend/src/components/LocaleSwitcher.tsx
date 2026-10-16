@@ -8,7 +8,7 @@ const OPTIONS: { value: Language; label: string }[] = [
 ];
 
 export function LocaleSwitcher() {
-  const { language, setLanguage } = useLocale();
+  const { language, setLanguage, t } = useLocale();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -48,7 +48,7 @@ export function LocaleSwitcher() {
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         className="border border-edt-olive bg-transparent px-2.5 py-1 text-xs uppercase text-edt-olive outline-none transition-colors hover:text-edt-soft"
-        aria-label="Select language"
+        aria-label={t.nav.selectLanguage}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
@@ -58,7 +58,7 @@ export function LocaleSwitcher() {
       {isOpen ? (
         <ul
           role="listbox"
-          aria-label="Select language"
+          aria-label={t.nav.selectLanguage}
           className="absolute right-0 top-full z-[60] mt-1 min-w-full overflow-hidden rounded-sm border border-edt-olive/80 bg-edt-olive shadow-lg"
         >
           {OPTIONS.map((option) => (

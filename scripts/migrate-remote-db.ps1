@@ -2,14 +2,19 @@
 #
 # What it does, in order:
 #   1. Exports a full backup to db_backup/edt-diagnostic-<timestamp>.sql
-#   2. Applies pending migrations (through 0019: unified test bank, Papers I–III
-#      content, voucher_test_usage, AI feedback, Paper III schema/seed/activate)
+#   2. Applies pending migrations (through 0020: unified test bank, Papers I–III
+#      content, voucher_test_usage, AI feedback, Paper III schema/seed/activate,
+#      Oct 2026 Paper I bank + feedback_items hard-replace). Migration 0020
+#      DELETES live Paper I attempts, answers, reports, PDF cache rows, class
+#      overviews, and submissions even with -SkipCleanse, and drops
+#      attempt_reports.ai_feedback_zh. Backup first.
 #   3. Cleanses candidate data: deletes submissions, sessions, attempts,
 #      reports, PDF cache index, users, and per-test usage; resets every
 #      voucher to unused. VOUCHERS AND TEACHER CREDENTIALS ARE KEPT.
-#      Prefer -SkipCleanse for additive Paper III go-live (keep live attempts).
-#   4. Verifies row counts (3 tests, 145 question groups/questions, bands,
-#      vouchers intact)
+#      Prefer -SkipCleanse for additive go-live that must keep Papers II/III
+#      attempts. It will NOT preserve Paper I history once 0020 applies.
+#   4. Verifies row counts (3 tests, 145 groups, 2695 questions, 1869 Paper I
+#      feedback items, 38 conversion bands after 0020; vouchers intact)
 #
 # Usage:
 #   .\scripts\migrate-remote-db.ps1
@@ -134,7 +139,7 @@ if (-not $SkipCleanse) {
 # --- 4. Verify ---
 Write-Step "Verifying..."
 # Single line: newlines inside the --command argument break npx.cmd on Windows.
-$verifySql = "SELECT (SELECT COUNT(*) FROM tests) AS tests, (SELECT COUNT(*) FROM question_groups) AS question_groups, (SELECT COUNT(*) FROM questions) AS questions, (SELECT COUNT(*) FROM score_conversion_bands) AS bands, (SELECT COUNT(*) FROM vouchers) AS vouchers, (SELECT COUNT(*) FROM teacher_credentials) AS teacher_credentials, (SELECT COUNT(*) FROM submissions) AS submissions, (SELECT COUNT(*) FROM test_attempts) AS test_attempts, (SELECT COUNT(*) FROM vouchers WHERE use_count > 0 OR used_at IS NOT NULL) AS used_vouchers;"
+$verifySql = "SELECT (SELECT COUNT(*) FROM tests) AS tests, (SELECT COUNT(*) FROM question_groups) AS question_groups, (SELECT COUNT(*) FROM questions) AS questions, (SELECT COUNT(*) FROM feedback_items) AS feedback_items, (SELECT COUNT(*) FROM score_conversion_bands) AS bands, (SELECT COUNT(*) FROM vouchers) AS vouchers, (SELECT COUNT(*) FROM teacher_credentials) AS teacher_credentials, (SELECT COUNT(*) FROM submissions) AS submissions, (SELECT COUNT(*) FROM test_attempts) AS test_attempts, (SELECT COUNT(*) FROM vouchers WHERE use_count > 0 OR used_at IS NOT NULL) AS used_vouchers;"
 $checks = Invoke-D1Query $verifySql
 $row = $checks[0]
 
@@ -144,16 +149,17 @@ Write-Host " Remote migrate + cleanse complete" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  tests:               $($row.tests)  (expected 3)"
 Write-Host "  question groups:     $($row.question_groups)  (expected 145)"
-Write-Host "  questions:           $($row.questions)  (expected 145)"
-Write-Host "  conversion bands:    $($row.bands)"
+Write-Host "  questions:           $($row.questions)  (expected 2695 after 0020)"
+Write-Host "  feedback items:      $($row.feedback_items)  (expected 1869 after 0020)"
+Write-Host "  conversion bands:    $($row.bands)  (expected 38 after 0020)"
 Write-Host "  vouchers (kept):     $($row.vouchers)"
 Write-Host "  teacher credentials: $($row.teacher_credentials)"
 Write-Host "  submissions:         $($row.submissions)  (expected 0 after cleanse)"
 Write-Host "  test attempts:       $($row.test_attempts)  (expected 0 after cleanse)"
 Write-Host "  used vouchers:       $($row.used_vouchers)  (expected 0 after cleanse)"
 
-if ([int]$row.tests -lt 3 -or [int]$row.questions -ne 145 -or [int]$row.question_groups -ne 145) {
-    Write-Warning "Counts differ from the expected unified test bank (3 tests / 145 groups). Check migration output above."
+if ([int]$row.tests -lt 3 -or [int]$row.questions -ne 2695 -or [int]$row.question_groups -ne 145 -or [int]$row.feedback_items -ne 1869 -or [int]$row.bands -ne 38) {
+    Write-Warning "Counts differ from the expected test bank (3 tests / 145 groups / 2695 questions / 1869 feedback items / 38 bands). Check migration output above."
 }
 
 Write-Host ""

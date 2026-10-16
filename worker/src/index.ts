@@ -1,11 +1,11 @@
-import { computePercentileStats, handleAdminRequest } from './admin';
+import { handleAdminRequest } from './admin';
 import { handleAiRequest } from './aiFeedback';
 import { handleAssetRequest } from './assets';
 import { handleAttemptRequest } from './attempts';
 import { handlePaper3Queue, type GradeJobMessage } from './paper3Grading';
 import { handlePaper3Route } from './paper3Routes';
 import { handleReportRequest } from './reports';
-import { dualWriteTest1Attempt, type Test1SubmissionPayload } from './test1DualWrite';
+import type { ReportVariablesV1 } from './reportVariables';
 
 type Env = {
   DB: D1Database;
@@ -36,35 +36,7 @@ type TeacherVerifyRequest = {
   key?: string;
 };
 
-type SubmissionPayload = Test1SubmissionPayload & {
-  dimensions?: Array<{ key: string; score: number }>;
-  reportSnapshot?: {
-    questionCorrectness?: Record<string, 0 | 1>;
-    weakDimensions?: string[];
-    recommendation?: string;
-  };
-};
-
-type TeacherSubmissionRow = {
-  id: string;
-  submitted_at: number;
-  total_score: number;
-  payload: string;
-  dimension_scores: string | null;
-  score_dist: string | null;
-  ai_status: string | null;
-  ai_feedback_en: string | null;
-};
-
 const DEFAULT_USER_GROUP = 'General Learner';
-
-const SCORE_BUCKETS = [
-  { label: '≤A2 (0–26)', min: 0, max: 26 },
-  { label: 'B1 (27–40)', min: 27, max: 40 },
-  { label: 'B2 (41–56)', min: 41, max: 56 },
-  { label: 'C1 (57–74)', min: 57, max: 74 },
-  { label: 'C2 (75–90)', min: 75, max: 90 },
-];
 
 const json = (body: unknown, init: ResponseInit = {}, origin?: string) =>
   new Response(JSON.stringify(body), {
@@ -242,106 +214,6 @@ export async function getSession(request: Request, env: { DB: D1Database }) {
   return row;
 }
 
-async function submit(request: Request, env: Env, origin?: string) {
-  const session = await getSession(request, env);
-  if (!session) return unauthorized(origin);
-
-  const payload = await readJson<SubmissionPayload>(request);
-  const totalScore = payload.scores?.total?.correct;
-  if (typeof totalScore !== 'number') {
-    return json({ error: 'Submission payload is missing total score' }, { status: 400 }, origin);
-  }
-
-  const userGroup = session.user_group?.trim() || DEFAULT_USER_GROUP;
-  const now = Date.now();
-  const submissionId = crypto.randomUUID();
-
-  // Build dimension_scores JSON: { key: score, ... }
-  let dimensionScoresJson: string | null = null;
-  if (Array.isArray(payload.dimensions) && payload.dimensions.length > 0) {
-    const dimensionScores: Record<string, number> = {};
-    for (const d of payload.dimensions) {
-      if (typeof d.key === 'string' && typeof d.score === 'number') {
-        dimensionScores[d.key] = d.score;
-      }
-    }
-    dimensionScoresJson = JSON.stringify(dimensionScores);
-  }
-
-  // Build score_dist JSON: { questionId: 0|1, ... }
-  let scoreDistJson: string | null = null;
-  const qc = payload.reportSnapshot?.questionCorrectness;
-  if (qc && typeof qc === 'object') {
-    scoreDistJson = JSON.stringify(qc);
-  }
-
-  const usesAllowed = Number(session.uses_allowed ?? 1);
-
-  // Legacy Test 1 flow: consume one (voucher, Test 1) use before storing.
-  const TEST1_ID = 1;
-  const consumed = await consumeVoucherUse(env.DB, session.voucher_code, TEST1_ID, usesAllowed, session.token);
-  if (!consumed) {
-    return json({ error: 'Voucher submission limit reached' }, { status: 409 }, origin);
-  }
-
-  await env.DB.prepare(
-    'INSERT INTO submissions (id, session_token, payload, total_score, created_at, user_group, dimension_scores, score_dist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-    .bind(submissionId, session.token, JSON.stringify(payload), totalScore, now, userGroup, dimensionScoresJson, scoreDistJson)
-    .run();
-
-  const allStats = await env.DB.prepare(
-    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score > ? THEN 1 ELSE 0 END) as strictlyAbove FROM submissions',
-  )
-    .bind(totalScore)
-    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
-
-  const groupStats = await env.DB.prepare(
-    'SELECT COUNT(*) as cohortSize, AVG(total_score) as cohortMean, SUM(CASE WHEN total_score > ? THEN 1 ELSE 0 END) as strictlyAbove FROM submissions WHERE user_group = ?',
-  )
-    .bind(totalScore, userGroup)
-    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
-
-  const all = computePercentileStats(allStats);
-  const group = computePercentileStats(groupStats);
-
-  let attemptId: string | null = null;
-  try {
-    attemptId = await dualWriteTest1Attempt(env, {
-      sessionToken: session.token,
-      voucherCode: session.voucher_code,
-      userGroup,
-      payload,
-      totalScore,
-      cohortAll: all,
-      cohortGroup: group,
-    });
-    // Link the legacy row to its attempt so the teacher dashboard can join
-    // AI feedback onto the submission list.
-    await env.DB.prepare('UPDATE submissions SET attempt_id = ? WHERE id = ?').bind(attemptId, submissionId).run();
-  } catch (error) {
-    console.error('Test 1 dual-write failed:', error);
-  }
-
-  return json(
-    {
-      submissionId,
-      attemptId,
-      userGroup,
-      percentileRank: all.percentileRank,
-      cohortRank: all.cohortRank,
-      cohortSize: all.cohortSize,
-      cohortMean: all.cohortMean,
-      groupPercentileRank: group.percentileRank,
-      groupCohortRank: group.cohortRank,
-      groupCohortSize: group.cohortSize,
-      groupCohortMean: group.cohortMean,
-    },
-    undefined,
-    origin,
-  );
-}
-
 async function teacherVerify(request: Request, env: Env, origin?: string) {
   const body = await readJson<TeacherVerifyRequest>(request);
   const key = (body.key ?? '').trim();
@@ -401,173 +273,164 @@ async function teacherDashboard(request: Request, env: Env, origin?: string) {
     .bind(userGroup)
     .first<{ total: number; used: number }>();
 
-  // All submissions for this user_group, joined to their dual-written attempt
-  // for the per-student AI feedback snippet.
-  const submissionsResult = await env.DB.prepare(
-    `SELECT s.id, s.created_at as submitted_at, s.total_score, s.payload, s.dimension_scores, s.score_dist,
-            ar.ai_status AS ai_status, ar.ai_feedback_en AS ai_feedback_en
-     FROM submissions s
-     LEFT JOIN attempt_reports ar ON ar.test_attempt_id = s.attempt_id
-     WHERE s.user_group = ? ORDER BY s.created_at DESC`,
+  const attemptsResult = await env.DB.prepare(
+    `SELECT a.id AS attempt_id, a.end_time, ar.variables, ar.ai_status, ar.ai_feedback_en
+     FROM test_attempts a
+     JOIN tests t ON t.id = a.test_id
+     LEFT JOIN users u ON u.id = a.user_id
+     LEFT JOIN attempt_reports ar ON ar.test_attempt_id = a.id
+     WHERE a.status = 'completed' AND t.test_code = '01'
+       AND (u.user_group = ? OR a.session_token IN (
+         SELECT token FROM sessions s JOIN vouchers v ON v.code = s.voucher_code WHERE v.user_group = ?
+       ))
+     ORDER BY a.end_time DESC`,
   )
-    .bind(userGroup)
-    .all<TeacherSubmissionRow>();
+    .bind(userGroup, userGroup)
+    .all<{
+      attempt_id: string;
+      end_time: number | null;
+      variables: string | null;
+      ai_status: string | null;
+      ai_feedback_en: string | null;
+    }>();
 
-  const rows = submissionsResult.results ?? [];
+  const attemptRows = attemptsResult.results ?? [];
 
-  // Overall score stats
-  const scores = rows.map((r) => r.total_score);
-  const { mean: overallMean, median: overallMedian, stdDev: overallStdDev } = computeStats(scores);
+  const dimensionResult = await env.DB.prepare(
+    `SELECT d.id, d.key, d.name, d.short
+     FROM dimensions d
+     JOIN test_parts p ON p.id = d.test_part_id
+     JOIN tests t ON t.id = p.test_id
+     WHERE t.test_code = '01' AND p.part_code = '01'
+     ORDER BY d.sort_order`,
+  ).all<{ id: number; key: string; name: string; short: string | null }>();
+  const DIMENSION_KEYS = dimensionResult.results ?? [];
 
-  // Score distribution buckets
+  const bucketResult = await env.DB.prepare(
+    `SELECT b.min_correct, b.max_correct, b.cefr_label
+     FROM score_conversion_bands b
+     JOIN test_parts p ON p.id = b.test_part_id
+     JOIN tests t ON t.id = b.test_id
+     WHERE t.test_code = '01' AND p.part_code = '01'
+     ORDER BY b.min_correct`,
+  ).all<{ min_correct: number; max_correct: number; cefr_label: string }>();
+  const SCORE_BUCKETS = (bucketResult.results ?? []).map((band) => ({
+    label: `${band.cefr_label} (${band.min_correct}–${band.max_correct})`,
+    min: band.min_correct,
+    max: band.max_correct,
+  }));
+
+  const dimValuesMap: Record<string, number[]> = {};
+  for (const dk of DIMENSION_KEYS) dimValuesMap[dk.key] = [];
+  const partAScores: number[] = [];
+  const partBScores: number[] = [];
+
+  const submissionRows = attemptRows.map((row) => {
+    let name = 'N/A';
+    let candidateId = 'N/A';
+    let partAScore: number | null = null;
+    let partBScore: number | null = null;
+    let cefr = 'N/A';
+    let cefrLabel = 'N/A';
+    let overallPercent: number | null = null;
+    let weakDimensions: string[] = [];
+    try {
+      if (row.variables) {
+        const v = JSON.parse(row.variables) as ReportVariablesV1;
+        name = v.candidate?.name ?? 'N/A';
+        candidateId = v.candidate?.ref ?? 'N/A';
+        const partA = v.scores?.parts?.find((part) => part.partCode === '01');
+        const partB = v.scores?.parts?.find((part) => part.partCode === '02');
+        partAScore = partA?.correct ?? null;
+        partBScore = partB?.correct ?? null;
+        if (typeof partAScore === 'number') partAScores.push(partAScore);
+        if (typeof partBScore === 'number') partBScores.push(partBScore);
+        const overallBand = v.paper1?.overall.band;
+        cefr = overallBand?.cefrLabel ?? 'N/A';
+        cefrLabel = overallBand?.levelLabel ?? 'N/A';
+        overallPercent = v.paper1?.overall.percent ?? null;
+        weakDimensions = v.paper1?.partA.growthKeys ?? v.weakDimensionKeys ?? [];
+        for (const dim of v.dimensions ?? []) {
+          if (typeof dim.score === 'number' && dimValuesMap[dim.key]) dimValuesMap[dim.key].push(dim.score);
+        }
+      }
+    } catch {
+      /* skip */
+    }
+    return {
+      submissionId: row.attempt_id,
+      attemptId: row.attempt_id,
+      submittedAt: row.end_time ?? 0,
+      candidateName: name,
+      candidateId,
+      testDate: row.end_time ?? 0,
+      totalScore: partAScore ?? 0,
+      partAScore,
+      partATotal: 60,
+      partBScore,
+      partBTotal: 30,
+      overallPercent,
+      cefr,
+      cefrLabel,
+      weakDimensions,
+      recommendation: '',
+      aiFeedback: row.ai_status === 'done' ? row.ai_feedback_en : null,
+    };
+  });
+
+  const { mean: overallMean, median: overallMedian, stdDev: overallStdDev } = computeStats(partAScores);
+  const { mean: partBMean } = computeStats(partBScores);
+
   const scoreBuckets = SCORE_BUCKETS.map((bucket) => ({
     label: bucket.label,
     min: bucket.min,
     max: bucket.max,
-    count: scores.filter((s) => s >= bucket.min && s <= bucket.max).length,
+    count: partAScores.filter((s) => s >= bucket.min && s <= bucket.max).length,
   }));
-
-  // Per-dimension stats — aggregate from dimension_scores column (fallback to payload)
-  const DIMENSION_KEYS = [
-    { id: 1, key: 'tenses', name: 'Tenses', short: 'Tenses' },
-    { id: 2, key: 'adjectiveClauses', name: 'Adjective Clauses', short: 'Adj. Cl.' },
-    { id: 3, key: 'nounClauses', name: 'Noun Clauses', short: 'Noun Cl.' },
-    { id: 4, key: 'adverbialClausesReasons', name: 'Adverbs/Adverbial Clauses I: Reasons, Purposes & Results', short: 'Adv. Cl. I' },
-    { id: 5, key: 'adverbialClausesMannerTimePlace', name: 'Adverbs/Adverbial Clauses II: Manners, Time & Place', short: 'Adv. Cl. II' },
-    { id: 6, key: 'adverbialClausesConcession', name: 'Adverbs/Adverbial Clauses III: Concession & Contrast', short: 'Adv. Cl. III' },
-    { id: 7, key: 'conditionals', name: 'Conditionals', short: 'Conditionals' },
-    { id: 8, key: 'activePassive', name: 'Active vs Passive', short: 'Act/Pass' },
-    { id: 9, key: 'gerundsInfinitives', name: 'Gerunds & Infinitives', short: 'Ger/Inf' },
-    { id: 10, key: 'reportedSpeech', name: 'Reported Speech & Reported Questions', short: 'Reported' },
-    { id: 11, key: 'collocationsPrepositions', name: 'Collocations & Prepositions', short: 'Coll/Prep' },
-    { id: 12, key: 'subjectVerbAgreement', name: 'Subject-verb Agreement', short: 'S-V Agr.' },
-  ];
-
-  const dimValuesMap: Record<string, number[]> = {};
-  for (const dk of DIMENSION_KEYS) dimValuesMap[dk.key] = [];
-
-  // Question correctness aggregation
-  const questionCountMap: Record<string, number> = {};
-  const questionCorrectMap: Record<string, number> = {};
-
-  for (const row of rows) {
-    let dimScores: Record<string, number> | null = null;
-    if (row.dimension_scores) {
-      try { dimScores = JSON.parse(row.dimension_scores) as Record<string, number>; } catch { /* skip */ }
-    }
-    if (!dimScores) {
-      try {
-        const p = JSON.parse(row.payload) as SubmissionPayload;
-        if (Array.isArray(p.dimensions)) {
-          dimScores = {};
-          for (const d of p.dimensions) {
-            if (typeof d.key === 'string' && typeof d.score === 'number') {
-              dimScores[d.key] = d.score;
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
-    if (dimScores) {
-      for (const dk of DIMENSION_KEYS) {
-        const v = dimScores[dk.key];
-        if (typeof v === 'number') dimValuesMap[dk.key].push(v);
-      }
-    }
-
-    // Score dist
-    let scoreDist: Record<string, 0 | 1> | null = null;
-    if (row.score_dist) {
-      try { scoreDist = JSON.parse(row.score_dist) as Record<string, 0 | 1>; } catch { /* skip */ }
-    }
-    if (!scoreDist) {
-      try {
-        const p = JSON.parse(row.payload) as SubmissionPayload;
-        const qc = (p.reportSnapshot as { questionCorrectness?: Record<string, 0 | 1> })?.questionCorrectness;
-        if (qc) scoreDist = qc;
-      } catch { /* skip */ }
-    }
-    if (scoreDist) {
-      for (const [qid, correct] of Object.entries(scoreDist)) {
-        questionCountMap[qid] = (questionCountMap[qid] ?? 0) + 1;
-        questionCorrectMap[qid] = (questionCorrectMap[qid] ?? 0) + correct;
-      }
-    }
-  }
 
   const dimensionStats = DIMENSION_KEYS.map((dk) => {
     const vals = dimValuesMap[dk.key];
     const { mean, stdDev } = computeStats(vals);
-    return { id: dk.id, key: dk.key, name: dk.name, short: dk.short, mean, stdDev };
+    return { id: dk.id, key: dk.key, name: dk.name, short: dk.short ?? '', mean, stdDev };
   });
 
-  // Build question stats
-  const PART_A_COUNT = 60;
-  const PART_B_COUNT = 30;
-  const ALL_QIDS_ORDERED = [
-    ...Array.from({ length: PART_A_COUNT }, (_, i) => `A${i + 1}`),
-    ...Array.from({ length: PART_B_COUNT }, (_, i) => `B${i + 1}`),
-  ];
+  const questionAgg = await env.DB.prepare(
+    `SELECT g.legacy_qid AS qid, g.canonical_number, p.part_code,
+            COUNT(*) AS total, SUM(CASE WHEN a.is_correct = 1 THEN 1 ELSE 0 END) AS correct
+     FROM test_attempt_answers a
+     JOIN test_attempts ta ON ta.id = a.test_attempt_id
+     JOIN tests t ON t.id = ta.test_id
+     JOIN question_groups g ON g.id = a.question_group_id
+     JOIN test_parts p ON p.id = g.test_part_id
+     LEFT JOIN users u ON u.id = ta.user_id
+     WHERE ta.status = 'completed' AND t.test_code = '01'
+       AND (u.user_group = ? OR ta.session_token IN (
+         SELECT token FROM sessions s JOIN vouchers v ON v.code = s.voucher_code WHERE v.user_group = ?
+       ))
+     GROUP BY g.id, g.legacy_qid, g.canonical_number, p.part_code
+     ORDER BY g.canonical_number`,
+  )
+    .bind(userGroup, userGroup)
+    .all<{ qid: string | null; canonical_number: number; part_code: string; total: number; correct: number }>();
 
-  const questionStats = ALL_QIDS_ORDERED.map((qid, idx) => {
-    const part = (idx < PART_A_COUNT ? 'A' : 'B') as 'A' | 'B';
-    const canonicalNumber = idx < PART_A_COUNT ? idx + 1 : idx - PART_A_COUNT + 61;
-    const total = questionCountMap[qid] ?? 0;
-    const correct = questionCorrectMap[qid] ?? 0;
-    return {
-      qid,
-      part,
-      canonicalNumber,
-      correctRate: total > 0 ? Math.round((correct / total) * 1000) / 10 : null,
-      totalResponses: total,
-    };
-  });
-
-  // Build submission rows
-  const submissionRows = rows.map((row) => {
-    let name = 'N/A';
-    let candidateId = 'N/A';
-    let testDate = row.submitted_at;
-    let cefr = 'N/A';
-    let cefrLabel = 'N/A';
-    let weakDimensions: string[] = [];
-    let recommendation = '';
-
-    try {
-      const p = JSON.parse(row.payload) as SubmissionPayload;
-      name = p.candidateInfo?.name ?? 'N/A';
-      candidateId = p.candidateInfo?.id ?? 'N/A';
-      testDate = p.candidateInfo?.testDate ?? row.submitted_at;
-      cefr = p.cefrBand?.cefr ?? 'N/A';
-      cefrLabel = p.cefrBand?.label ?? 'N/A';
-      weakDimensions = p.reportSnapshot?.weakDimensions ?? [];
-      recommendation = p.reportSnapshot?.recommendation ?? '';
-    } catch { /* skip */ }
-
-    return {
-      submissionId: row.id,
-      submittedAt: row.submitted_at,
-      candidateName: name,
-      candidateId,
-      testDate,
-      totalScore: row.total_score,
-      cefr,
-      cefrLabel,
-      weakDimensions,
-      recommendation,
-      aiFeedback: row.ai_status === 'done' ? row.ai_feedback_en : null,
-    };
-  });
+  const questionStats = (questionAgg.results ?? []).map((row) => ({
+    qid: row.qid || `Q${row.canonical_number}`,
+    part: (row.part_code === '01' ? 'A' : 'B') as 'A' | 'B',
+    canonicalNumber: row.canonical_number,
+    correctRate: Number(row.total) > 0 ? Math.round((Number(row.correct) / Number(row.total)) * 1000) / 10 : null,
+    totalResponses: Number(row.total),
+  }));
 
   return json(
     {
       userGroup,
       totalVouchers: Number(voucherStats?.total ?? 0),
       usedVouchers: Number(voucherStats?.used ?? 0),
-      totalSubmissions: rows.length,
+      totalSubmissions: attemptRows.length,
       overallMean,
       overallMedian,
       overallStdDev,
+      partBMean,
       scoreBuckets,
       dimensionStats,
       submissions: submissionRows,
@@ -690,7 +553,14 @@ export default {
       }
 
       if (url.pathname === '/api/submit' && request.method === 'POST') {
-        return await submit(request, env, origin);
+        return json(
+          {
+            error: 'RETIRED',
+            message: 'Paper I uses POST /api/attempts. Client-scored /api/submit is retired.',
+          },
+          { status: 410 },
+          origin,
+        );
       }
 
       if (url.pathname === '/api/session/tests' && request.method === 'GET') {

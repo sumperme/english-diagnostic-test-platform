@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { EdtNavBar } from '../components/EdtNavBar';
+import { EdtNavBar, marketingHeroOffsetClass } from '../components/EdtNavBar';
 import { useLocale } from '../i18n/LocaleContext';
 import { fetchTestAvailability } from '../lib/api';
 import { heroBackgroundStyle } from '../lib/landingAssets';
@@ -96,7 +96,7 @@ export function InfoScreen({
     <div className="min-h-screen bg-edt-forest text-edt-soft">
       <EdtNavBar variant="marketing" onNavigate={onNavigate} onLogin={onLogin} onLogoClick={onLogoClick} />
 
-      <header className="-mt-nav bg-cover bg-center pb-20 pt-nav" style={heroBackgroundStyle}>
+      <header className={`${marketingHeroOffsetClass} bg-cover bg-center pb-20`} style={heroBackgroundStyle}>
         <div className="mx-auto w-full max-w-content px-6 md:px-10">
           <div className="mx-auto w-full max-w-[1200px] animate-fade-in">
             <div className="mb-8">
@@ -108,7 +108,7 @@ export function InfoScreen({
                 ← {t.info.backToVoucher}
               </button>
               <div className="border-l-4 border-edt-neon pl-4 text-sm uppercase tracking-[0.22em] text-edt-neon">
-                CEFR C1 / C2
+                {t.info.cefrTag}
               </div>
               <h1 className={`my-5 text-4xl leading-tight md:text-5xl ${headingFont}`}>{t.info.title}</h1>
               <div className="mb-4 inline-flex items-center rounded-full border border-[rgba(170,169,90,0.35)] bg-edt-forest/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-edt-neon">

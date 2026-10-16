@@ -58,7 +58,7 @@ export function VoucherScreen({
           <main className="mx-auto w-full max-w-lg animate-fade-in">
             <div className="mb-8 text-center">
               <span className="mb-4 inline-block rounded-full border border-[rgba(170,169,90,0.3)] bg-edt-forest/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-edt-neon">
-                CEFR C1 / C2
+                {t.voucher.cefrTag}
               </span>
               <h1 className="mb-2 font-display text-3xl font-bold text-edt-soft md:text-4xl">{t.voucher.title}</h1>
               <p className="text-sm leading-relaxed text-edt-soft/75">{t.voucher.subtitle}</p>

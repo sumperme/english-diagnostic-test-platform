@@ -6,14 +6,20 @@ const QID_TO_DIMENSION = new Map<string, { id: number; name: string }>(
   ),
 );
 
+function partBCefr(canonicalNumber: number): string {
+  if (canonicalNumber <= 66) return 'B1';
+  if (canonicalNumber <= 76) return 'B2';
+  if (canonicalNumber <= 86) return 'C1';
+  return 'C2';
+}
+
 /** Human-readable business key for teacher dashboard question IDs. */
 export function explainedQuestionId(qid: string, canonicalNumber: number, part: 'A' | 'B'): string {
   const ggg = String(canonicalNumber).padStart(3, '0');
   if (part === 'A') {
     const dimension = QID_TO_DIMENSION.get(qid);
-    if (!dimension) return `Test1-PartA-Qs${ggg}-Var1`;
-    return `Test1-PartA-Dimension${dimension.id}(${dimension.name})-Qs${ggg}-Var1`;
+    if (!dimension) return `Test1-PartA-Qs${ggg}`;
+    return `Test1-PartA-Dimension${dimension.id}(${dimension.name})-Qs${ggg}`;
   }
-  const vocabLabel = canonicalNumber <= 75 ? 'Vocabulary(Common)' : 'Vocabulary(Specialized Terms)';
-  return `Test1-PartB-${vocabLabel}-Qs${ggg}-Var1`;
+  return `Test1-PartB-Vocabulary(${partBCefr(canonicalNumber)})-Qs${ggg}`;
 }

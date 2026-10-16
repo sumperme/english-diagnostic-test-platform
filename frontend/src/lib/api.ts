@@ -8,11 +8,9 @@ import type {
   AiFeedbackResponse,
   AttemptInstance,
   AttemptReportPayload,
-  BackendData,
   ClassOverview,
   ClassOverviewList,
   AiQuota,
-  ReportResult,
   Session,
   TeacherDashboardData,
   TeacherSession,
@@ -125,19 +123,6 @@ export async function fetchTestAvailability(sessionToken: string): Promise<TestA
   return data.tests;
 }
 
-export async function submitReport(result: ReportResult, sessionToken: string): Promise<BackendData> {
-  return parseJson<BackendData>(
-    await fetch(`${API_BASE}/api/submit`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${sessionToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(result),
-    }),
-  );
-}
-
 // --- Attempts API (DB-backed tests, e.g. Paper II) ---
 
 function bearerHeaders(sessionToken: string): HeadersInit {
@@ -246,10 +231,9 @@ export async function fetchAudioBlob(url: string, sessionToken: string): Promise
   return URL.createObjectURL(await response.blob());
 }
 
-/** Server-rendered report PDF: fetch as blob with credentials, then trigger a download. */
+/** Server-rendered (English) report PDF: fetch as blob with credentials, then trigger a download. */
 export async function downloadServerReportPdf(
   attemptId: string,
-  lang: 'en' | 'zh-HK',
   sessionToken: string,
   fallbackFilename?: string,
   teacherKey?: string,
@@ -257,10 +241,7 @@ export async function downloadServerReportPdf(
   const headers: Record<string, string> = {};
   if (teacherKey) headers['X-Teacher-Key'] = teacherKey;
   else headers.Authorization = `Bearer ${sessionToken}`;
-  const response = await fetch(
-    `${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf?lang=${encodeURIComponent(lang)}`,
-    { headers },
-  );
+  const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf`, { headers });
   if (!response.ok) {
     throw new ApiError('PDF_DOWNLOAD_FAILED', `PDF request failed (${response.status})`);
   }

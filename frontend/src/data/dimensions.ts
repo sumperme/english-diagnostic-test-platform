@@ -7,19 +7,25 @@ export type Dimension = {
   qids: string[];
 };
 
+function areaSlots(area: number): { canonicalNumbers: number[]; qids: string[] } {
+  const start = (area - 1) * 5 + 1;
+  const canonicalNumbers = [start, start + 1, start + 2, start + 3, start + 4];
+  return { canonicalNumbers, qids: canonicalNumbers.map((n) => `A${n}`) };
+}
+
 export const DIMENSIONS: Dimension[] = [
-  { id: 1, key: 'tenses', name: 'Tenses', short: 'Tenses', canonicalNumbers: [7, 8, 20, 27, 37], qids: ['A7', 'A8', 'A20', 'A27', 'A37'] },
-  { id: 2, key: 'adjectiveClauses', name: 'Adjective Clauses', short: 'Adj. Cl.', canonicalNumbers: [4, 5, 6, 38, 39], qids: ['A4', 'A5', 'A6', 'A38', 'A39'] },
-  { id: 3, key: 'nounClauses', name: 'Noun Clauses', short: 'Noun Cl.', canonicalNumbers: [26, 30, 40, 41, 42], qids: ['A26', 'A30', 'A40', 'A41', 'A42'] },
-  { id: 4, key: 'adverbialClausesReasons', name: 'Adverbs/Adverbial Clauses I: Reasons, Purposes & Results', short: 'Adv. Cl. I', canonicalNumbers: [9, 11, 28, 43, 44], qids: ['A9', 'A11', 'A28', 'A43', 'A44'] },
-  { id: 5, key: 'adverbialClausesMannerTimePlace', name: 'Adverbs/Adverbial Clauses II: Manners, Time & Place', short: 'Adv. Cl. II', canonicalNumbers: [10, 13, 25, 45, 46], qids: ['A10', 'A13', 'A25', 'A45', 'A46'] },
-  { id: 6, key: 'adverbialClausesConcession', name: 'Adverbs/Adverbial Clauses III: Concession & Contrast', short: 'Adv. Cl. III', canonicalNumbers: [19, 31, 32, 55, 56], qids: ['A19', 'A31', 'A32', 'A55', 'A56'] },
-  { id: 7, key: 'conditionals', name: 'Conditionals', short: 'Conditionals', canonicalNumbers: [16, 22, 23, 49, 50], qids: ['A16', 'A22', 'A23', 'A49', 'A50'] },
-  { id: 8, key: 'activePassive', name: 'Active vs Passive', short: 'Act/Pass', canonicalNumbers: [1, 2, 3, 51, 52], qids: ['A1', 'A2', 'A3', 'A51', 'A52'] },
-  { id: 9, key: 'gerundsInfinitives', name: 'Gerunds & Infinitives', short: 'Ger/Inf', canonicalNumbers: [21, 24, 29, 53, 54], qids: ['A21', 'A24', 'A29', 'A53', 'A54'] },
-  { id: 10, key: 'reportedSpeech', name: 'Reported Speech & Reported Questions', short: 'Reported', canonicalNumbers: [17, 18, 36, 57, 58], qids: ['A17', 'A18', 'A36', 'A57', 'A58'] },
-  { id: 11, key: 'collocationsPrepositions', name: 'Collocations & Prepositions', short: 'Coll/Prep', canonicalNumbers: [12, 14, 15, 47, 48], qids: ['A12', 'A14', 'A15', 'A47', 'A48'] },
-  { id: 12, key: 'subjectVerbAgreement', name: 'Subject-verb Agreement', short: 'S-V Agr.', canonicalNumbers: [33, 34, 35, 59, 60], qids: ['A33', 'A34', 'A35', 'A59', 'A60'] },
+  { id: 1, key: 'complexTenses', name: 'Tenses & Time Expressions', short: 'Tenses', ...areaSlots(1) },
+  { id: 2, key: 'modalsStance', name: 'Modal Verbs: Certainty, Possibility & Advice', short: 'Modals', ...areaSlots(2) },
+  { id: 3, key: 'adjectiveRelativeClauses', name: 'Adjective (Relative) Clauses', short: 'Relative Cl.', ...areaSlots(3) },
+  { id: 4, key: 'nounClausesNominalisation', name: 'Noun Clauses & Formal Academic Expressions', short: 'Noun Cl.', ...areaSlots(4) },
+  { id: 5, key: 'adverbialClausesConnectors', name: 'Linking Ideas & Sentence Relationships', short: 'Linking', ...areaSlots(5) },
+  { id: 6, key: 'conditionalsUnrealistic', name: 'Conditionals & Unreal Situations', short: 'Conditionals', ...areaSlots(6) },
+  { id: 7, key: 'reportedSpeech', name: 'Reported Speech', short: 'Reported', ...areaSlots(7) },
+  { id: 8, key: 'gerundsInfinitives', name: 'Gerunds & Infinitives', short: 'Ger./Inf.', ...areaSlots(8) },
+  { id: 9, key: 'subjunctiveFormal', name: 'Formal Grammar & Official Language', short: 'Formal', ...areaSlots(9) },
+  { id: 10, key: 'inversionFronting', name: 'Inversion & Emphasis', short: 'Inversion', ...areaSlots(10) },
+  { id: 11, key: 'participleReducedClauses', name: 'Participial Phrases & Reduced Clauses', short: 'Participles', ...areaSlots(11) },
+  { id: 12, key: 'dependentPrepositions', name: 'Prepositions & Common Word Combinations', short: 'Prepositions', ...areaSlots(12) },
 ];
 
 export const OVERALL_ONLY_QIDS = [

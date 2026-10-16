@@ -21,12 +21,37 @@
 #   powershell -ExecutionPolicy Bypass -File ./scripts/upload-assets.ps1 -Local -Config worker/wrangler.toml
 #       -> local R2 simulation of the WORKER config (used by `npm run worker:dev`
 #          and scripts/local-preview.ps1; state lives in worker/.wrangler/state)
+#
+# Exit codes:
+#   0  Success. Missing master folders are warnings, not failures (see below).
+#   1  Operational failure: wrangler/R2 rejected an upload, or a font download
+#      failed. These `throw` immediately, so 1 always wins over 2 - the run
+#      aborts before it can reach the integrity summary.
+#   2  Integrity failure only: byte-identical masters were bound for different
+#      R2 keys. The duplicate keys are skipped and everything else is uploaded,
+#      so the environment stays usable. This is a defect in the CONTENT, not in
+#      the environment, and callers that only need a working local environment
+#      (scripts/local-preview.ps1) may treat 2 as a warning and continue.
+#
+# Audio masters:
+#   The MP3 masters live in the gitignored `Client_Feedback/` folder (see
+#   -AssetSource below). They are IRREPLACEABLE source assets: without them the
+#   R2 bucket cannot be re-seeded or restored. Keep a backup outside the repo and
+#   point -AssetSource at it, e.g.
+#     ... -AssetSource "D:\EDT-Masters"
+#   expecting these subfolders:
+#     <AssetSource>\Audio Tracks            21 Paper II MP3s
+#     <AssetSource>\Audio Tracks_Paper III  7 "Speaking Prompt_Task N.mp3"
+#     <AssetSource>\system_sound_effects    Recording_Start_Sound_3Sec + _Stop
+#   If a folder is absent the script skips that group with a warning and still
+#   uploads the rest (fonts always work), so local preview stays usable.
 
 param(
     [switch]$Local,
     [string]$Config = "",
     [string]$ApiToken = "",
-    [string]$AccountId = ""
+    [string]$AccountId = "",
+    [string]$AssetSource = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +62,64 @@ if ($ApiToken) { $env:CLOUDFLARE_API_TOKEN = $ApiToken }
 if ($AccountId) { $env:CLOUDFLARE_ACCOUNT_ID = $AccountId }
 
 $bucket = 'edt-assets'
+
+# Root of the audio masters. Defaults to the historical in-repo location.
+$assetRoot = if ($AssetSource) { $AssetSource } else { Join-Path $root 'Client_Feedback' }
+$skipped = @()
+$integrityFailures = @()
+$integrityWarnings = @()
+$blockedKeys = @{}
+
+function Write-MissingSource([string]$what, [string]$path, [string]$expects) {
+    Write-Warning "Skipping $what - source folder not found: $path"
+    Write-Host "    Needed: $expects" -ForegroundColor DarkYellow
+    Write-Host "    Restore the masters there, or re-run with -AssetSource <folder containing 'Audio Tracks', 'Audio Tracks_Paper III', 'system_sound_effects'>." -ForegroundColor DarkYellow
+    $script:skipped += $what
+}
+
+# Pre-upload integrity check for one audio group. $Plan is a list of
+# @{ Key = '<r2 key>'; Path = '<master file>' }.
+#
+# Two different R2 keys fed from byte-identical masters is always a content
+# defect - the Paper III Task 5 and Task 6 speaking prompts shipped that way and
+# nothing downstream can detect it once the objects are in R2. Colliding keys are
+# left at their previous contents and the run exits non-zero.
+function Test-AudioGroupIntegrity([string]$Group, [object[]]$Plan) {
+    $entries = @()
+    foreach ($item in $Plan) {
+        $file = Get-Item -LiteralPath $item.Path
+        if ($file.Length -eq 0) {
+            Write-Warning "$Group - '$($file.Name)' is 0 bytes; it would publish an empty object at $($item.Key)."
+            $script:integrityWarnings += "$($item.Key) <- $($file.Name) (0 bytes)"
+            continue
+        }
+        $entries += [pscustomobject]@{
+            Key  = $item.Key
+            Name = $file.Name
+            Hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        }
+    }
+
+    foreach ($dupe in @($entries | Group-Object Hash | Where-Object { $_.Count -gt 1 })) {
+        $distinctKeys = @($dupe.Group | ForEach-Object { $_.Key } | Sort-Object -Unique)
+        # The same master legitimately feeding one key is not a collision.
+        if ($distinctKeys.Count -lt 2) { continue }
+
+        Write-Host ''
+        Write-Host "DUPLICATE AUDIO - $Group" -ForegroundColor Red
+        Write-Host "  SHA-256 $($dupe.Name)" -ForegroundColor Red
+        Write-Host "  These masters are byte-identical but must be different recordings:" -ForegroundColor Red
+        foreach ($entry in @($dupe.Group | Sort-Object Key)) {
+            Write-Host "    $($entry.Name)  ->  $bucket/$($entry.Key)" -ForegroundColor Red
+        }
+        Write-Host "  Not uploading these keys. Re-supply the correct master, then re-run." -ForegroundColor Red
+        Write-Host ''
+
+        foreach ($entry in $dupe.Group) { $script:blockedKeys[$entry.Key] = $true }
+        $script:integrityFailures += "$Group - $($distinctKeys -join '  ==  ') share SHA-256 $($dupe.Name)"
+    }
+}
+
 $flags = @()
 if ($Local) { $flags += '--local' } else { $flags += '--remote' }
 if ($Config) { $flags += @('-c', $Config) }
@@ -67,54 +150,85 @@ if (-not $Local) {
 }
 
 # --- Audio tracks ---
-$audioDir = Join-Path $root 'Client_Feedback\Audio Tracks'
-$tracks = Get-ChildItem -Path $audioDir -Filter '*.mp3' | Sort-Object Name
-# 20 question clips + the 00 volume-testing track used by the pre-test sound check.
-if ($tracks.Count -ne 21) {
-    Write-Warning "Expected 21 MP3s in '$audioDir', found $($tracks.Count)."
-}
-foreach ($track in $tracks) {
-    $key = "audio/test-02/$($track.Name)"
-    Write-Host "Uploading $key"
-    $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $track.FullName, '--content-type', 'audio/mpeg') + $flags)
-    if ($code -ne 0) { throw "Upload failed for $key" }
+$audioDir = Join-Path $assetRoot 'Audio Tracks'
+if (-not (Test-Path $audioDir)) {
+    Write-MissingSource 'Paper II listening audio (audio/test-02/*)' $audioDir '21 MP3s: 20260701_01..20 plus 20260701_00_Testing_volume.mp3'
+} else {
+    $tracks = @(Get-ChildItem -Path $audioDir -Filter '*.mp3' | Sort-Object Name)
+    # 20 question clips + the 00 volume-testing track used by the pre-test sound check.
+    if ($tracks.Count -ne 21) {
+        Write-Warning "Expected 21 MP3s in '$audioDir', found $($tracks.Count)."
+    }
+    Test-AudioGroupIntegrity 'Paper II listening audio' @($tracks | ForEach-Object {
+        @{ Key = "audio/test-02/$($_.Name)"; Path = $_.FullName }
+    })
+    foreach ($track in $tracks) {
+        $key = "audio/test-02/$($track.Name)"
+        if ($blockedKeys.ContainsKey($key)) { Write-Host "Skipping $key (failed integrity check)" -ForegroundColor Red; continue }
+        Write-Host "Uploading $key"
+        $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $track.FullName, '--content-type', 'audio/mpeg') + $flags)
+        if ($code -ne 0) { throw "Upload failed for $key" }
+    }
 }
 
 # --- Paper III speaking prompt tracks ---
 # Source filenames use spaces ("Speaking Prompt_Task 1.mp3"); R2 keys use
 # underscores to match shared_resources.content_url in the Test 3 seed.
-$paper3AudioDir = Join-Path $root 'Client_Feedback\Audio Tracks_Paper III'
-for ($n = 1; $n -le 7; $n++) {
-    $srcName = "Speaking Prompt_Task $n.mp3"
-    $src = Join-Path $paper3AudioDir $srcName
-    if (-not (Test-Path $src)) {
-        Write-Warning "Missing Paper III track: $src"
-        continue
+$paper3AudioDir = Join-Path $assetRoot 'Audio Tracks_Paper III'
+if (-not (Test-Path $paper3AudioDir)) {
+    Write-MissingSource 'Paper III speaking prompts (audio/test-03/Speaking_Prompt_Task_*)' $paper3AudioDir '7 MP3s named "Speaking Prompt_Task 1.mp3" .. "Speaking Prompt_Task 7.mp3"'
+} else {
+    $paper3Plan = @()
+    for ($n = 1; $n -le 7; $n++) {
+        $srcName = "Speaking Prompt_Task $n.mp3"
+        $src = Join-Path $paper3AudioDir $srcName
+        if (-not (Test-Path $src)) {
+            Write-Warning "Missing Paper III track: $src"
+            continue
+        }
+        $paper3Plan += @{ Key = "audio/test-03/Speaking_Prompt_Task_$n.mp3"; Path = $src; Name = $srcName }
     }
-    $key = "audio/test-03/Speaking_Prompt_Task_$n.mp3"
-    Write-Host "Uploading $key (from $srcName)"
-    $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $src, '--content-type', 'audio/mpeg') + $flags)
-    if ($code -ne 0) { throw "Upload failed for $key" }
+    Test-AudioGroupIntegrity 'Paper III speaking prompts' $paper3Plan
+    foreach ($item in $paper3Plan) {
+        $key = $item.Key
+        if ($blockedKeys.ContainsKey($key)) { Write-Host "Skipping $key (failed integrity check)" -ForegroundColor Red; continue }
+        Write-Host "Uploading $key (from $($item.Name))"
+        $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$key", '--file', $item.Path, '--content-type', 'audio/mpeg') + $flags)
+        if ($code -ne 0) { throw "Upload failed for $key" }
+    }
 }
 
-$sfxDir = Join-Path $root 'Client_Feedback\system_sound_effects'
-foreach ($sfx in @(
-    # 3-second start cue (synced with on-screen 3-2-1). Source may be .MP3 casing.
-    @{ File = 'Recording_Start_Sound_3Sec.MP3'; Key = 'audio/test-03/Recording_Start_Sound_3Sec.mp3' },
-    @{ File = 'Recording_Stop_Sound.mp3'; Key = 'audio/test-03/Recording_Stop_Sound.mp3' }
-)) {
-    $src = Join-Path $sfxDir $sfx.File
-    if (-not (Test-Path $src)) {
-        # Fall back to lowercase extension if present.
-        $alt = Join-Path $sfxDir ($sfx.File -replace '\.MP3$', '.mp3')
-        if (Test-Path $alt) { $src = $alt }
+$sfxDir = Join-Path $assetRoot 'system_sound_effects'
+if (-not (Test-Path $sfxDir)) {
+    Write-MissingSource 'Paper III recording beeps (audio/test-03/Recording_*)' $sfxDir 'Recording_Start_Sound_3Sec.MP3 and Recording_Stop_Sound.mp3'
+} else {
+    $sfxPlan = @()
+    foreach ($sfx in @(
+        # 3-second start cue (synced with on-screen 3-2-1). Source may be .MP3 casing.
+        @{ File = 'Recording_Start_Sound_3Sec.MP3'; Key = 'audio/test-03/Recording_Start_Sound_3Sec.mp3' },
+        @{ File = 'Recording_Stop_Sound.mp3'; Key = 'audio/test-03/Recording_Stop_Sound.mp3' }
+    )) {
+        $src = Join-Path $sfxDir $sfx.File
+        if (-not (Test-Path $src)) {
+            # Fall back to lowercase extension if present.
+            $alt = Join-Path $sfxDir ($sfx.File -replace '\.MP3$', '.mp3')
+            if (Test-Path $alt) { $src = $alt }
+        }
+        if (-not (Test-Path $src)) {
+            Write-Warning "Missing required Paper III system sound: $($sfx.File) in $sfxDir"
+            Write-Host "    Paper III recording cues will not play until it is uploaded." -ForegroundColor DarkYellow
+            $script:skipped += "Paper III system sound $($sfx.File)"
+            continue
+        }
+        $sfxPlan += @{ Key = $sfx.Key; Path = $src }
     }
-    if (-not (Test-Path $src)) {
-        throw "Missing required Paper III system sound: $($sfx.File) in $sfxDir"
+    Test-AudioGroupIntegrity 'Paper III recording cues' $sfxPlan
+    foreach ($item in $sfxPlan) {
+        if ($blockedKeys.ContainsKey($item.Key)) { Write-Host "Skipping $($item.Key) (failed integrity check)" -ForegroundColor Red; continue }
+        Write-Host "Uploading $($item.Key)"
+        $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$($item.Key)", '--file', $item.Path, '--content-type', 'audio/mpeg') + $flags)
+        if ($code -ne 0) { throw "Upload failed for $($item.Key)" }
     }
-    Write-Host "Uploading $($sfx.Key)"
-    $code = Invoke-Wrangler (@('r2', 'object', 'put', "$bucket/$($sfx.Key)", '--file', $src, '--content-type', 'audio/mpeg') + $flags)
-    if ($code -ne 0) { throw "Upload failed for $($sfx.Key)" }
 }
 
 # --- PDF fonts ---
@@ -141,4 +255,27 @@ foreach ($font in $fonts) {
     if ($code -ne 0) { throw "Upload failed for $($font.Key)" }
 }
 
-Write-Host 'Done.'
+if ($skipped.Count -gt 0) {
+    Write-Host ''
+    Write-Warning "Done, but $($skipped.Count) audio group(s) were skipped because the masters are missing:"
+    foreach ($item in $skipped) { Write-Host "  - $item" -ForegroundColor DarkYellow }
+    Write-Host "  Searched under: $assetRoot" -ForegroundColor DarkYellow
+    Write-Host "  Affected R2 keys stay at their previous contents (or absent). Re-run with -AssetSource once the masters are restored." -ForegroundColor DarkYellow
+} elseif ($integrityFailures.Count -eq 0) {
+    Write-Host 'Done.'
+}
+
+if ($integrityWarnings.Count -gt 0) {
+    Write-Host ''
+    Write-Warning "$($integrityWarnings.Count) empty master(s) - the uploaded objects will be silent:"
+    foreach ($item in $integrityWarnings) { Write-Host "  - $item" -ForegroundColor DarkYellow }
+}
+
+if ($integrityFailures.Count -gt 0) {
+    Write-Host ''
+    Write-Host "INTEGRITY CHECK FAILED - $($integrityFailures.Count) duplicate-hash group(s):" -ForegroundColor Red
+    foreach ($item in $integrityFailures) { Write-Host "  - $item" -ForegroundColor Red }
+    Write-Host "  Those R2 keys were NOT uploaded and keep their previous contents." -ForegroundColor Red
+    Write-Host "  Everything else was uploaded; re-run after the correct masters are supplied." -ForegroundColor Red
+    exit 2
+}

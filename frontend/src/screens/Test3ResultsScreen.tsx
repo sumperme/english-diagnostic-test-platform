@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
-import { useLocale } from '../i18n/LocaleContext';
-import { downloadServerReportPdf, fetchAudioBlob } from '../lib/api';
+import { getMessages } from '../i18n/messages';
+import { downloadServerReportPdf } from '../lib/api';
 import { formatDate } from '../lib/format';
-import { stripSpeakingUiBoilerplate } from '../lib/paper3Prompt';
-import type { AttemptReviewRow, Session, Test2Result } from '../types';
+import type { Session, Test2Result } from '../types';
 
 const BAND_COLOR: Record<string, string> = {
   b1b2: 'bg-amber-100 text-amber-800 border-amber-300',
@@ -16,60 +15,6 @@ const BAND_COLOR: Record<string, string> = {
 const PART_A = '01';
 const PART_B = '02';
 
-function formatCohortRankDisplay(
-  rank: number | null | undefined,
-  size: number,
-  pendingLabel: string,
-  ofLabel: string,
-): string {
-  if (size < 2) return pendingLabel;
-  if (rank == null) return '—';
-  return `${rank} ${ofLabel} ${size}`;
-}
-
-function humanizeDimensionKey(key: string): string {
-  return key
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/^./, (c) => c.toUpperCase());
-}
-
-function isUnansweredRow(row: AttemptReviewRow): boolean {
-  if (row.aiMark && typeof row.aiMark === 'object' && (row.aiMark as { unanswered?: boolean }).unanswered) {
-    return true;
-  }
-  return !row.aiBandKey;
-}
-
-function AuthenticatedAudio({ url, sessionToken }: { url: string; sessionToken: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let revoked: string | null = null;
-    let cancelled = false;
-    void fetchAudioBlob(url, sessionToken)
-      .then((objectUrl) => {
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        revoked = objectUrl;
-        setSrc(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
-    return () => {
-      cancelled = true;
-      if (revoked) URL.revokeObjectURL(revoked);
-    };
-  }, [url, sessionToken]);
-
-  if (error) return <p className="mt-2 text-xs text-rose-600">Audio unavailable</p>;
-  if (!src) return <p className="mt-2 text-xs text-slate-400">Loading audio…</p>;
-  return <audio className="mt-2 w-full" controls src={src} />;
-}
-
 export function Test3ResultsScreen({
   result,
   session,
@@ -79,11 +24,10 @@ export function Test3ResultsScreen({
   session: Session;
   onHome: () => void;
 }) {
-  const { t, language } = useLocale();
+  const t = getMessages('en');
   const [isExporting, setIsExporting] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const variables = result.variables;
-  const dateLocale = language === 'zh-HK' ? 'zh-HK' : 'en-GB';
 
   if (!variables) {
     return (
@@ -110,18 +54,6 @@ export function Test3ResultsScreen({
   const overallColor = overallBand
     ? (BAND_COLOR[overallBand.bandKey] ?? 'bg-slate-100 text-slate-700 border-slate-300')
     : '';
-  const cohort = variables.cohort;
-
-  const speakingRows = result.review.filter((row) => row.partCode === PART_A);
-  const writingRows = result.review.filter((row) => row.partCode === PART_B);
-
-  const taskTitle = (row: AttemptReviewRow) => {
-    const key = row.dimensionKey ?? '';
-    const friendly =
-      paper3.taskTitles[key as keyof typeof paper3.taskTitles] ??
-      (key ? humanizeDimensionKey(key) : `Task ${row.canonicalNumber}`);
-    return `Question ${row.canonicalNumber}: ${friendly}`;
-  };
 
   const exportPdf = async () => {
     setIsExporting(true);
@@ -130,7 +62,6 @@ export function Test3ResultsScreen({
       const voucher = session.voucherCode ?? 'unknown';
       await downloadServerReportPdf(
         result.attemptId,
-        language,
         session.sessionToken,
         `EDT-Report_${voucher}_03_${result.attemptId}.pdf`,
       );
@@ -166,48 +97,6 @@ export function Test3ResultsScreen({
     },
   ];
 
-  const TaskCard = ({ row }: { row: AttemptReviewRow }) => {
-    const unanswered = isUnansweredRow(row);
-    const band = row.aiBandKey ?? row.aiMark?.bandKey;
-    const color = unanswered
-      ? 'bg-slate-100 text-slate-600 border-slate-300'
-      : BAND_COLOR[band ?? ''] ?? 'bg-slate-100 text-slate-700 border-slate-300';
-
-    return (
-      <article className="rounded-2xl border border-slate-100 bg-white p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-bold text-edt-forest">{taskTitle(row)}</h3>
-          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${color}`}>
-            {unanswered ? t.report.notAnswered : (row.aiMark?.cefrLabel ?? band?.toUpperCase() ?? '—')}
-          </span>
-        </div>
-        <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-slate-500">
-          {row.responseType === 'speaking' ? stripSpeakingUiBoilerplate(row.prompt) : row.prompt}
-        </p>
-        {!unanswered && row.responseType === 'speaking' && row.audioUrl ? (
-          <AuthenticatedAudio url={row.audioUrl} sessionToken={session.sessionToken} />
-        ) : null}
-        {!unanswered && row.responseType === 'writing' && row.textResponse ? (
-          <div className="mb-3 max-h-40 overflow-y-auto rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">
-            {row.textResponse}
-          </div>
-        ) : null}
-        {!unanswered && row.aiMark?.strengths?.length ? (
-          <p className="mt-2 text-xs text-emerald-700">
-            <span className="font-semibold">{paper3.strengths}: </span>
-            {row.aiMark.strengths.join('; ')}
-          </p>
-        ) : null}
-        {!unanswered && row.aiMark?.improvements?.length ? (
-          <p className="mt-1 text-xs text-amber-800">
-            <span className="font-semibold">{paper3.improvements}: </span>
-            {row.aiMark.improvements.join('; ')}
-          </p>
-        ) : null}
-      </article>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-slate-50">
       <EdtNavBar variant="app" onLogoClick={onHome} onBack={onHome} />
@@ -233,7 +122,7 @@ export function Test3ResultsScreen({
               {[
                 [t.report.name, variables.candidate.name],
                 [t.report.candidateId, variables.candidate.ref],
-                [t.report.date, formatDate(variables.attempt.endTime, dateLocale)],
+                [t.report.date, formatDate(variables.attempt.endTime, 'en-GB')],
                 [t.report.duration, duration],
               ].map(([label, value]) => (
                 <div key={label}>
@@ -297,8 +186,7 @@ export function Test3ResultsScreen({
               <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.test2.partBands}</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 {variables.bands.parts.map((band) => {
-                  const label =
-                    band.partCode === PART_A ? paper3.partBandSpeaking : paper3.partBandWriting;
+                  const label = band.partCode === PART_A ? paper3.partBandSpeaking : paper3.partBandWriting;
                   const score = partScore(band.partCode);
                   const narrative = paper3.bandNarratives[band.bandKey as keyof typeof paper3.bandNarratives];
                   return (
@@ -334,82 +222,6 @@ export function Test3ResultsScreen({
               </div>
             </section>
           ) : null}
-
-          {cohort ? (
-            <section className="rounded-2xl border border-slate-100 bg-white p-6">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.cohortRanking}</h3>
-              <div className="grid gap-6 lg:grid-cols-2">
-                {[
-                  {
-                    title: t.report.studyGroup,
-                    rank: cohort.groupCohortRank,
-                    mean: cohort.groupCohortMean,
-                    size: cohort.groupCohortSize,
-                    accent: 'border-emerald-100 bg-emerald-50/40',
-                    valueCls: 'text-emerald-700',
-                  },
-                  {
-                    title: t.report.allLearners,
-                    rank: cohort.cohortRank,
-                    mean: cohort.cohortMean,
-                    size: cohort.cohortSize,
-                    accent: 'border-sky-100 bg-sky-50/40',
-                    valueCls: 'text-sky-700',
-                  },
-                ].map((entry) => (
-                  <div key={entry.title} className={`rounded-xl border p-4 ${entry.accent}`}>
-                    <p className="mb-3 text-sm font-bold text-slate-700">{entry.title}</p>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortRank}</p>
-                        <p
-                          className={`text-lg font-extrabold leading-snug ${entry.size < 2 ? 'text-sm font-semibold text-slate-500' : entry.valueCls}`}
-                        >
-                          {formatCohortRankDisplay(
-                            entry.rank,
-                            entry.size,
-                            t.report.cohortRankPending,
-                            t.report.cohortRankOf,
-                          )}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{entry.mean ?? '-'}</p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortSize}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{entry.size}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs text-slate-400">{t.report.basedOn}</p>
-            </section>
-          ) : null}
-
-          <section className="no-print">
-            <h3 className="mb-4 text-lg font-bold text-slate-800">
-              {t.report.partA} — {t.test2.partASpeaking}
-            </h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              {speakingRows.map((row) => (
-                <TaskCard key={row.questionCode} row={row} />
-              ))}
-            </div>
-          </section>
-
-          <section className="no-print">
-            <h3 className="mb-4 text-lg font-bold text-slate-800">
-              {t.report.partB} — {t.test2.partBWriting}
-            </h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              {writingRows.map((row) => (
-                <TaskCard key={row.questionCode} row={row} />
-              ))}
-            </div>
-          </section>
         </div>
 
         <div className="pb-4 pt-8 no-print">

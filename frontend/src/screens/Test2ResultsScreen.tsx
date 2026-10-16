@@ -2,18 +2,15 @@ import { useState } from 'react';
 import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
-import { useLocale } from '../i18n/LocaleContext';
+import { getMessages } from '../i18n/messages';
 import { downloadServerReportPdf } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { scoreBarColor } from '../lib/scoring';
-import type { AttemptReviewRow, Session, Test2Result } from '../types';
-
-type Filter = 'all' | 'incorrect' | 'unanswered';
+import type { Session, Test2Result } from '../types';
 
 const PART_A = '01';
 const PART_B = '02';
 
-/** EDT-palette band card colors, keyed by conversion band_key. */
 const BAND_COLOR: Record<string, string> = {
   b1Plus: 'bg-orange-100 text-orange-800 border-orange-300',
   lowB2: 'bg-amber-100 text-amber-800 border-amber-300',
@@ -24,67 +21,6 @@ const BAND_COLOR: Record<string, string> = {
   c2: 'bg-emerald-100 text-emerald-800 border-emerald-300',
 };
 
-function formatCohortRankDisplay(
-  rank: number | null | undefined,
-  size: number,
-  pendingLabel: string,
-  ofLabel: string,
-): string {
-  if (size < 2) return pendingLabel;
-  if (rank == null) return '—';
-  return `${rank} ${ofLabel} ${size}`;
-}
-
-function ReviewSection({ title, rows }: { title: string; rows: AttemptReviewRow[] }) {
-  const { t } = useLocale();
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <span className="text-sm font-bold text-slate-700">
-          {title} <span className="text-xs font-normal text-slate-400">({rows.length})</span>
-        </span>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {rows.map((row) => {
-          const ok = row.isCorrect === 1;
-          const userText = row.selectedOption
-            ? `(${row.selectedOption}) ${row.options[row.selectedOption as keyof typeof row.options] ?? ''}`
-            : null;
-          const correctText = `(${row.correctAnswer}) ${row.options[row.correctAnswer as keyof typeof row.options] ?? ''}`;
-
-          return (
-            <div key={row.questionCode} className="px-5 py-4">
-              <p className="mb-2 text-sm leading-relaxed text-slate-700">
-                <span className="mr-1.5 text-xs font-bold text-slate-400">Q{row.displayOrder ?? row.canonicalNumber}</span>
-                {row.prompt}
-              </p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span
-                  className={`rounded-full px-2.5 py-1 font-medium ${
-                    !row.selectedOption
-                      ? 'bg-slate-100 text-slate-500'
-                      : ok
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-rose-100 text-rose-700'
-                  }`}
-                >
-                  {t.report.yourAnswer}: {userText ?? t.report.notAnswered}
-                </span>
-                {!ok ? (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700">
-                    {t.report.correct}: {correctText}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function Test2ResultsScreen({
   result,
   session,
@@ -94,12 +30,10 @@ export function Test2ResultsScreen({
   session: Session;
   onHome: () => void;
 }) {
-  const { t, language } = useLocale();
-  const [filter, setFilter] = useState<Filter>('all');
+  const t = getMessages('en');
   const [isExporting, setIsExporting] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const variables = result.variables;
-  const dateLocale = language === 'zh-HK' ? 'zh-HK' : 'en-GB';
 
   if (!variables) {
     return (
@@ -121,15 +55,6 @@ export function Test2ResultsScreen({
   const overallBand = variables.bands.overall;
   const overallNarrative = overallBand ? t.test2.bandNarratives[overallBand.bandKey as keyof typeof t.test2.bandNarratives] : undefined;
   const overallColor = overallBand ? (BAND_COLOR[overallBand.bandKey] ?? 'bg-slate-100 text-slate-700 border-slate-300') : '';
-  const cohort = variables.cohort;
-
-  const filterRow = (row: AttemptReviewRow) => {
-    if (filter === 'incorrect') return Boolean(row.selectedOption) && row.isCorrect !== 1;
-    if (filter === 'unanswered') return !row.selectedOption;
-    return true;
-  };
-  const listeningRows = result.review.filter((row) => row.partCode === PART_A && filterRow(row));
-  const readingRows = result.review.filter((row) => row.partCode === PART_B && filterRow(row));
 
   const exportPdf = async () => {
     setIsExporting(true);
@@ -138,7 +63,6 @@ export function Test2ResultsScreen({
       const voucher = session.voucherCode ?? 'unknown';
       await downloadServerReportPdf(
         result.attemptId,
-        language,
         session.sessionToken,
         `EDT-Report_${voucher}_02_${result.attemptId}.pdf`,
       );
@@ -199,7 +123,7 @@ export function Test2ResultsScreen({
               {[
                 [t.report.name, variables.candidate.name],
                 [t.report.candidateId, variables.candidate.ref],
-                [t.report.date, formatDate(variables.attempt.endTime, dateLocale)],
+                [t.report.date, formatDate(variables.attempt.endTime, 'en-GB')],
                 [t.report.duration, duration],
               ].map(([label, value]) => (
                 <div key={label}>
@@ -300,53 +224,6 @@ export function Test2ResultsScreen({
             </section>
           ) : null}
 
-          {cohort ? (
-            <section className="rounded-2xl border border-slate-100 bg-white p-6">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.cohortRanking}</h3>
-              <div className="grid gap-6 lg:grid-cols-2">
-                {[
-                  {
-                    title: t.report.studyGroup,
-                    rank: cohort.groupCohortRank,
-                    mean: cohort.groupCohortMean,
-                    size: cohort.groupCohortSize,
-                    accent: 'border-emerald-100 bg-emerald-50/40',
-                    valueCls: 'text-emerald-700',
-                  },
-                  {
-                    title: t.report.allLearners,
-                    rank: cohort.cohortRank,
-                    mean: cohort.cohortMean,
-                    size: cohort.cohortSize,
-                    accent: 'border-sky-100 bg-sky-50/40',
-                    valueCls: 'text-sky-700',
-                  },
-                ].map((entry) => (
-                  <div key={entry.title} className={`rounded-xl border p-4 ${entry.accent}`}>
-                    <p className="mb-3 text-sm font-bold text-slate-700">{entry.title}</p>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortRank}</p>
-                        <p className={`text-lg font-extrabold leading-snug ${entry.size < 2 ? 'text-sm font-semibold text-slate-500' : entry.valueCls}`}>
-                          {formatCohortRankDisplay(entry.rank, entry.size, t.report.cohortRankPending, t.report.cohortRankOf)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{entry.mean ?? '-'}</p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortSize}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{entry.size}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs text-slate-400">{t.report.basedOn}</p>
-            </section>
-          ) : null}
-
           {variables.dimensions.length > 0 ? (
             <section className="overflow-visible rounded-2xl border border-slate-100 bg-white">
               <div className="overflow-visible p-6 pb-2">
@@ -399,40 +276,6 @@ export function Test2ResultsScreen({
             </section>
           ) : null}
         </div>
-
-        <section className="mt-8 no-print">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-slate-800">{t.report.questionReview}</h3>
-            <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs">
-              {[
-                ['all', t.report.all],
-                ['incorrect', t.report.incorrect],
-                ['unanswered', t.report.unanswered],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setFilter(value as Filter)}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition-all ${filter === value ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {listeningRows.length > 0 ? (
-            <ReviewSection title={`${t.report.partA} — ${t.test2.partAListening}`} rows={listeningRows} />
-          ) : null}
-          {readingRows.length > 0 ? (
-            <div className="mt-4">
-              <ReviewSection title={`${t.report.partB} — ${t.test2.partBReading}`} rows={readingRows} />
-            </div>
-          ) : null}
-          {listeningRows.length === 0 && readingRows.length === 0 ? (
-            <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-400">
-              {t.report.noQuestions}
-            </div>
-          ) : null}
-        </section>
 
         <div className="pb-4 pt-8 no-print">
           {pdfError ? <p className="mb-3 text-center text-sm text-rose-600">{t.test2.pdfError}</p> : null}

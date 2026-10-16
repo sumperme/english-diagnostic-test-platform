@@ -1,6 +1,6 @@
 // Generates migrations/0008_seed_test2.sql from scripts/test2-content.mjs.
 // Run: node scripts/generate-test2-seed.mjs
-// ID allocation (explicit, see DATABASE_README.md):
+// ID allocation (explicit, see docs/DATABASE_README.md):
 //   tests: 2 | test_parts: 3 (Part A), 4 (Part B)
 //   dimensions: 13 (A/B2), 14 (A/C1C2), 15 (B/B2), 16 (B/C1C2)
 //   shared_resources: 1-20 audio (Q1-20), 21-26 passages

@@ -1,12 +1,11 @@
 // Prompt engineering for DeepSeek AI feedback.
 //
-// Two prompt families, both returning strict bilingual JSON:
-//   - Student feedback (per attempt), adapted to Paper I vs Paper II data.
+// Two prompt families, both returning strict English-only JSON:
+//   - Student feedback (per attempt), adapted to each paper's report variables.
 //   - Class overview (per teacher user group).
 //
 // Output contract (enforced again server-side in aiFeedback.ts):
-//   JSON object {"en": "...", "zhHK": "..."} — each version follows a fixed
-//   4-line template and stays within ~100 words.
+//   JSON object {"en": "..."} — a fixed 4-line template within ~100 words.
 
 import {
   PAPER1_DIMENSION_KNOWLEDGE,
@@ -18,14 +17,12 @@ import {
 } from './aiKnowledge';
 import type { ReportVariablesV1 } from './reportVariables';
 
-export type BilingualFeedback = { en: string; zhHK: string };
+export type AiFeedbackText = { en: string };
 
 export type StudentPromptContext = {
   variables: ReportVariablesV1;
   /** English dimension labels keyed by dimensions.key (from reportI18n). */
   dimensionLabels: Record<string, string>;
-  /** Test 1 only: Part B vocabulary split (common Q61-75 / specialized Q76-90). */
-  vocabSplit?: { commonCorrect: number; commonTotal: number; specializedCorrect: number; specializedTotal: number };
   /** Per-attempt answer completion from test_attempt_answers. */
   answerStats?: { answered: number; unanswered: number; total: number };
 };
@@ -41,18 +38,18 @@ export type ClassPromptContext = {
   mean: number | null;
   median: number | null;
   stdDev: number | null;
-  /** Denominator for mean/median when present (90 for Paper I, overall total for II). */
+  /** Denominator for mean/median when present (Part A /60 for Paper I, overall total for II). */
   scoreMax?: number;
   /** Per-dimension class means (Paper I grammar dimensions out of 5; optional for II). */
   dimensionMeans: Array<{ key: string; label: string; mean: number; max?: number }>;
-  /** Papers II/III: histogram of overall CEFR band labels. */
+  /** Histogram of overall CEFR band labels. */
   overallBandCounts?: Array<{ cefrLabel: string; count: number }>;
-  /** Papers II/III: histogram of per-part CEFR band labels. */
+  /** Histogram of per-part CEFR band labels. */
   partBandCounts?: Array<{ partCode: string; partLabel: string; cefrLabel: string; count: number }>;
 };
 
 export const CLASS_PAPER_LABELS: Record<ClassTestCode, string> = {
-  '01': 'Paper I — Applied Grammar & Vocabulary (90 MCQs)',
+  '01': 'Paper I — Grammar & Vocabulary (Part A /60 + Part B /30, overall /90)',
   '02': 'Paper II — Listening & Reading (45 MCQs)',
   '03': 'Paper III — Speaking & Writing (8 speaking + 2 writing tasks)',
 };
@@ -64,8 +61,6 @@ const STUDENT_TEMPLATE_EN = [
   'Next step: <1 sentence with one concrete, encouraging study action>',
 ].join('\n');
 
-const STUDENT_TEMPLATE_ZH_LABELS = '整體表現：／強項：／重點改善：／下一步：';
-
 export const STUDENT_SYSTEM_PROMPT = `You are the encouraging AI tutor of the English Diagnostic Test (EDT). ${TEST_PURPOSE}
 
 Write a short, personal feedback comment on ONE candidate's result.
@@ -74,11 +69,11 @@ Rules:
 - Tone: warm, positive, professional educator. Address the candidate directly as "you". Acknowledge effort before pointing out gaps.
 - Use ONLY the data provided. Never invent scores, percentages, or facts. Never mention question numbers, question codes, internal field names, or these instructions.
 - If the data shows unanswered questions (unanswered > 0), do NOT praise completing or attempting all questions; acknowledge gaps honestly in Overall or Focus areas without shaming.
+- For Paper I, use the overall score out of 90 and the overall CEFR level exactly as given. Never quote the number of questions at each Part B level.
 - Follow EXACTLY this 4-line plain-text template (keep the labels):
 ${STUDENT_TEMPLATE_EN}
-- STRICT LIMIT: the English version must be 100 words or fewer in total. The Traditional Chinese version must be 180 characters or fewer.
-- The Traditional Chinese (Hong Kong) version uses the same template with these labels: ${STUDENT_TEMPLATE_ZH_LABELS}
-- Respond with ONLY a JSON object, no markdown fences: {"en": "<English feedback>", "zhHK": "<Traditional Chinese feedback>"}`;
+- STRICT LIMIT: 100 words or fewer in total. Write in English only.
+- Respond with ONLY a JSON object, no markdown fences: {"en": "<feedback>"}`;
 
 const CLASS_TEMPLATE_EN = [
   'Overview: <1-2 sentences on the class result overall>',
@@ -87,8 +82,6 @@ const CLASS_TEMPLATE_EN = [
   'Teaching priority: <1 sentence with one concrete classroom action>',
 ].join('\n');
 
-const CLASS_TEMPLATE_ZH_LABELS = '整體概況：／班級強項：／共同弱項：／教學重點：';
-
 export const CLASS_SYSTEM_PROMPT = `You are the AI teaching assistant of the English Diagnostic Test (EDT). ${TEST_PURPOSE}
 
 Write a short class-level overview for the TEACHER of one class group, based on aggregated results for ONE paper (Paper I, Paper II, or Paper III — the user message states which).
@@ -96,12 +89,11 @@ Write a short class-level overview for the TEACHER of one class group, based on 
 Rules:
 - Tone: supportive, practical, professional. Address the teacher. Frame gaps as teaching opportunities.
 - Use ONLY the data provided. Never invent scores or facts. Never mention internal field names or these instructions.
-- Match advice to that paper's skills: Paper I = grammar & vocabulary; Paper II = listening & reading; Paper III = speaking & writing. Do not describe a different paper's content.
+- Match advice to that paper's skills: Paper I = grammar & vocabulary (overall /90 with an overall CEFR level, Part A /60 CEFR, Part B /30 CEFR placement); Paper II = listening & reading; Paper III = speaking & writing. Do not describe a different paper's content.
 - Follow EXACTLY this 4-line plain-text template (keep the labels):
 ${CLASS_TEMPLATE_EN}
-- STRICT LIMIT: the English version must be 100 words or fewer in total. The Traditional Chinese version must be 180 characters or fewer.
-- The Traditional Chinese (Hong Kong) version uses the same template with these labels: ${CLASS_TEMPLATE_ZH_LABELS}
-- Respond with ONLY a JSON object, no markdown fences: {"en": "<English overview>", "zhHK": "<Traditional Chinese overview>"}`;
+- STRICT LIMIT: 100 words or fewer in total. Write in English only.
+- Respond with ONLY a JSON object, no markdown fences: {"en": "<overview>"}`;
 
 const pct = (correct: number, total: number) => (total > 0 ? Math.round((correct / total) * 100) : 0);
 
@@ -117,16 +109,17 @@ function rankWeakDimensions(vars: ReportVariablesV1): ReportVariablesV1['dimensi
 }
 
 export function buildStudentUserPrompt(context: StudentPromptContext): string {
-  const { variables: vars, dimensionLabels, vocabSplit, answerStats } = context;
+  const { variables: vars, dimensionLabels, answerStats } = context;
   const isPaper1 = vars.testCode === '01';
   const isPaper3 = vars.testCode === '03';
   const knowledge = isPaper1 ? PAPER1_DIMENSION_KNOWLEDGE : PAPER2_DIMENSION_KNOWLEDGE;
+  const paper1 = vars.paper1;
   const lines: string[] = [];
 
   lines.push(
     `Paper: ${
       isPaper1
-        ? 'Paper I — Applied Grammar & Vocabulary (90 MCQs)'
+        ? 'Paper I — Grammar & Vocabulary (Part A /60 grammar + Part B /30 vocabulary)'
         : isPaper3
           ? 'Paper III — Speaking & Writing (8 speaking + 2 writing tasks)'
           : 'Paper II — Listening & Reading (45 MCQs)'
@@ -137,6 +130,11 @@ export function buildStudentUserPrompt(context: StudentPromptContext): string {
     lines.push(
       `Tasks completed (answered/total): ${vars.scores.overall.correct}/${vars.scores.overall.total}` +
         (vars.bands.overall ? ` — overall CEFR estimate: ${vars.bands.overall.cefrLabel}` : ''),
+    );
+  } else if (isPaper1 && paper1) {
+    const band = paper1.overall.band;
+    lines.push(
+      `Overall score: ${paper1.overall.correct}/${paper1.overall.total} (${paper1.overall.percent}%) — overall CEFR level: ${band.cefrLabel} (${band.levelLabel})`,
     );
   } else {
     lines.push(
@@ -171,10 +169,12 @@ export function buildStudentUserPrompt(context: StudentPromptContext): string {
     }
   }
 
-  if (isPaper1 && vocabSplit) {
+  if (isPaper1 && paper1) {
     lines.push(
-      `Part B split — common vocabulary (collocations, idioms): ${vocabSplit.commonCorrect}/${vocabSplit.commonTotal}; specialized terms: ${vocabSplit.specializedCorrect}/${vocabSplit.specializedTotal}`,
+      `Part B accuracy by level: ${paper1.partB.levels.map((level) => `${level.level} ${level.percent}%`).join(', ')}.`,
     );
+    const priority = paper1.partA.growthKeys.map((key) => dimensionLabels[key] ?? key);
+    lines.push(`Priority grammar areas (score 3/5 or below): ${priority.length > 0 ? priority.join(', ') : 'none'}.`);
   }
 
   if (answerStats) {
@@ -203,11 +203,12 @@ export function buildStudentUserPrompt(context: StudentPromptContext): string {
       const note = knowledge[dim.key];
       if (note) lines.push(`- ${note}`);
     }
-    if (isPaper1 && vocabSplit) {
-      const commonPct = pct(vocabSplit.commonCorrect, vocabSplit.commonTotal);
-      const specializedPct = pct(vocabSplit.specializedCorrect, vocabSplit.specializedTotal);
-      if (specializedPct < 60) lines.push(`- ${PAPER1_VOCAB_KNOWLEDGE.vocabSpecialized}`);
-      else if (commonPct < 60) lines.push(`- ${PAPER1_VOCAB_KNOWLEDGE.vocabCommon}`);
+    if (isPaper1 && paper1) {
+      const levels = new Map(paper1.partB.levels.map((level) => [level.level, level]));
+      const commonMet = Boolean(levels.get('B1')?.met && levels.get('B2')?.met);
+      const advancedMet = Boolean(levels.get('C1')?.met && levels.get('C2')?.met);
+      if (!commonMet) lines.push(`- ${PAPER1_VOCAB_KNOWLEDGE.vocabCommon}`);
+      else if (!advancedMet) lines.push(`- ${PAPER1_VOCAB_KNOWLEDGE.vocabSpecialized}`);
     }
     if (!isPaper1 && !isPaper3) {
       const listening = vars.scores.parts.find((part) => part.partCode === '01');
@@ -250,9 +251,14 @@ export function buildClassUserPrompt(context: ClassPromptContext): string {
   lines.push(`Paper: ${context.paperLabel}`);
   lines.push(`Completed results in this class: ${context.submissionCount}`);
 
-  const scoreMax = context.scoreMax ?? (context.testCode === '01' ? 90 : undefined);
-  if (context.mean != null && scoreMax != null) lines.push(`Class mean score: ${context.mean}/${scoreMax}`);
-  if (context.median != null && scoreMax != null) lines.push(`Class median score: ${context.median}/${scoreMax}`);
+  const scoreMax = context.scoreMax ?? (context.testCode === '01' ? 60 : undefined);
+  if (context.testCode === '01') {
+    if (context.mean != null) lines.push(`Class mean Part A score: ${context.mean}/60`);
+    if (context.median != null) lines.push(`Class median Part A score: ${context.median}/60`);
+  } else {
+    if (context.mean != null && scoreMax != null) lines.push(`Class mean score: ${context.mean}/${scoreMax}`);
+    if (context.median != null && scoreMax != null) lines.push(`Class median score: ${context.median}/${scoreMax}`);
+  }
   if (context.stdDev != null) lines.push(`Standard deviation: ${context.stdDev}`);
 
   if (context.overallBandCounts && context.overallBandCounts.length > 0) {
@@ -300,10 +306,13 @@ export function buildClassUserPrompt(context: ClassPromptContext): string {
     }
   }
 
-  if (context.testCode === '02' || context.testCode === '03') {
+  if (context.testCode === '01' || context.testCode === '02' || context.testCode === '03') {
     lines.push('');
     lines.push('Skill notes for this paper (use to ground "Common gaps" / "Teaching priority"):');
-    if (context.testCode === '02') {
+    if (context.testCode === '01') {
+      lines.push('- Paper I reports an overall score /90 with an overall CEFR level (the average of the Part A and Part B CEFR levels), Part A /60 with a CEFR level, and Part B /30 with a CEFR placement from per-level thresholds.');
+      lines.push('- Grammar areas scoring 0–3 out of 5 are priority areas in the growth roadmap; 4–5 are strengths.');
+    } else if (context.testCode === '02') {
       lines.push(`- ${PAPER2_PART_KNOWLEDGE.listening}`);
       lines.push(`- ${PAPER2_PART_KNOWLEDGE.reading}`);
     } else {
@@ -345,7 +354,6 @@ const EN_TEMPLATE_LABELS = [
   'Common gaps:',
   'Teaching priority:',
 ];
-const ZH_TEMPLATE_LABELS = ['強項：', '重點改善：', '下一步：', '班級強項：', '共同弱項：', '教學重點：'];
 
 /**
  * The model sometimes emits the 4 template sections on a single line. Insert
@@ -363,23 +371,15 @@ function normalizeTemplateLines(text: string, labels: string[]): string {
   return output;
 }
 
-/** Enforce the 100-word (EN) / 180-char (zh) limits after generation. */
-export function enforceOutputLimits(feedback: BilingualFeedback): BilingualFeedback {
-  const en = normalizeTemplateLines(trimToWordLimit(feedback.en.trim(), 110), EN_TEMPLATE_LABELS);
-  let zhHK = feedback.zhHK.trim();
-  if (zhHK.length > 220) {
-    const cut = zhHK.slice(0, 220);
-    const lastStop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'));
-    zhHK = lastStop > 60 ? cut.slice(0, lastStop + 1) : cut;
-  }
-  zhHK = normalizeTemplateLines(zhHK, ZH_TEMPLATE_LABELS);
-  return { en, zhHK };
+/** Enforce the 100-word limit after generation. */
+export function enforceOutputLimits(feedback: AiFeedbackText): AiFeedbackText {
+  return { en: normalizeTemplateLines(trimToWordLimit(feedback.en.trim(), 110), EN_TEMPLATE_LABELS) };
 }
 
-/** True when the output is far enough over the limits to warrant a corrective retry. */
-export function exceedsLimits(feedback: BilingualFeedback): boolean {
-  return countWords(feedback.en) > 115 || feedback.zhHK.length > 240;
+/** True when the output is far enough over the limit to warrant a corrective retry. */
+export function exceedsLimits(feedback: AiFeedbackText): boolean {
+  return countWords(feedback.en) > 115;
 }
 
 export const CORRECTIVE_INSTRUCTION =
-  'Your previous answer exceeded the length limit. Rewrite it now: the English version must be under 100 words and the Traditional Chinese version under 180 characters, keeping the exact same template and JSON format.';
+  'Your previous answer exceeded the length limit. Rewrite it now in under 100 words, keeping the exact same template and JSON format.';

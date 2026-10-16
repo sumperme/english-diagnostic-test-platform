@@ -13,9 +13,16 @@ scripts/*
 !scripts/upload-assets.ps1
 !scripts/migrate-remote-db.ps1
 !scripts/generate-test1-seed.mjs
+!scripts/generate-paper1-seed.mjs
+!scripts/extract-paper1-feedback.mjs
 !scripts/generate-test2-seed.mjs
+!scripts/generate-test3-seed.mjs
 !scripts/test2-content.mjs
+!scripts/test3-content.mjs
+!scripts/extract-paper1-bank.mjs
+!scripts/docx-text.mjs
+!scripts/test-paper1-report.ts
 .fonts-cache/
 .cursor/
 Client_Feedback/
-index.html
+tmp_analysis/

@@ -1,6 +1,7 @@
 export type AdminEnv = {
   DB: D1Database;
   ADMIN_PASSWORD?: string;
+  PAPER3_GRADE?: Queue;
 };
 
 type JsonResponder = (body: unknown, init?: ResponseInit, origin?: string) => Response;
@@ -47,9 +48,13 @@ const VOUCHER_SELECT_SQL = `SELECT v.code, v.used_at, v.used_by_session, v.user_
 
 const DEFAULT_USER_GROUP = 'General Learner';
 
+/** ADMIN_PASSWORD is a Wrangler secret (worker/.dev.vars locally). No fallback: unset means no access. */
 export function isAdminAuthorized(request: Request, env: AdminEnv) {
+  const expected = env.ADMIN_PASSWORD ?? '';
+  if (expected.length === 0) {
+    return false;
+  }
   const password = request.headers.get('X-Admin-Password') ?? '';
-  const expected = env.ADMIN_PASSWORD ?? 'EDT-Aa2026!';
   return password.length > 0 && password === expected;
 }
 
@@ -553,6 +558,10 @@ export async function handleAdminRequest(
     return null;
   }
 
+  if (!env.ADMIN_PASSWORD) {
+    return json({ error: 'Admin access is not configured' }, { status: 503 }, origin);
+  }
+
   if (!isAdminAuthorized(request, env)) {
     return adminUnauthorized(origin, json);
   }
@@ -603,19 +612,23 @@ export async function handleAdminRequest(
     return adminAiUsage(request, env, origin, json);
   }
 
-  return json({ error: 'Not found' }, { status: 404 }, origin);
-}
+  if (url.pathname === '/api/admin/paper3-regrade' && request.method === 'POST') {
+    const body = await request.json<{ attemptIds?: string[] }>().catch(() => ({}) as { attemptIds?: string[] });
+    const attemptIds = Array.isArray(body.attemptIds) ? body.attemptIds.filter(Boolean).slice(0, 20) : [];
+    if (attemptIds.length === 0) {
+      return json({ error: 'attemptIds required' }, { status: 400 }, origin);
+    }
+    if (!env.PAPER3_GRADE) {
+      return json({ error: 'PAPER3_GRADE queue not bound' }, { status: 503 }, origin);
+    }
+    for (const attemptId of attemptIds) {
+      await env.DB.prepare(`UPDATE test_attempts SET grading_status = 'pending' WHERE id = ?`)
+        .bind(attemptId)
+        .run();
+      await env.PAPER3_GRADE.send({ attemptId, autoSubmitted: false });
+    }
+    return json({ ok: true, enqueued: attemptIds.length, attemptIds }, undefined, origin);
+  }
 
-export function computePercentileStats(
-  stats: { cohortSize: number; cohortMean: number | null; strictlyAbove: number } | null,
-) {
-  const cohortSize = Number(stats?.cohortSize ?? 0);
-  const cohortMean = stats?.cohortMean == null ? null : Math.round(Number(stats.cohortMean) * 10) / 10;
-  const strictlyAbove = Number(stats?.strictlyAbove ?? 0);
-  const cohortRank = cohortSize > 0 ? strictlyAbove + 1 : null;
-  const percentileRank =
-    cohortSize >= 2 && cohortRank != null
-      ? Math.round(((cohortSize - cohortRank) / (cohortSize - 1)) * 100)
-      : null;
-  return { cohortSize, cohortMean, cohortRank, percentileRank };
+  return json({ error: 'Not found' }, { status: 404 }, origin);
 }

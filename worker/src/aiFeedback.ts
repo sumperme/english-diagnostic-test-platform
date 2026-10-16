@@ -24,7 +24,7 @@ import {
   enforceOutputLimits,
   exceedsLimits,
   STUDENT_SYSTEM_PROMPT,
-  type BilingualFeedback,
+  type AiFeedbackText,
   type ClassPromptContext,
   type ClassTestCode,
 } from './aiPrompts';
@@ -51,7 +51,6 @@ const STALE_CLAIM_MS = 3 * 60_000;
 type AiReportRow = {
   ai_status: string;
   ai_feedback_en: string | null;
-  ai_feedback_zh: string | null;
   ai_generated_at: number | null;
   ai_claimed_at: number | null;
 };
@@ -169,14 +168,14 @@ async function getStudentFeedback(
 
 async function readAiRow(env: AiEnv, attemptId: string): Promise<AiReportRow | null> {
   return env.DB.prepare(
-    'SELECT ai_status, ai_feedback_en, ai_feedback_zh, ai_generated_at, ai_claimed_at FROM attempt_reports WHERE test_attempt_id = ?',
+    'SELECT ai_status, ai_feedback_en, ai_generated_at, ai_claimed_at FROM attempt_reports WHERE test_attempt_id = ?',
   )
     .bind(attemptId)
     .first<AiReportRow>();
 }
 
-const feedbackOf = (row: AiReportRow): BilingualFeedback | null =>
-  row.ai_feedback_en && row.ai_feedback_zh ? { en: row.ai_feedback_en, zhHK: row.ai_feedback_zh } : null;
+const feedbackOf = (row: AiReportRow): AiFeedbackText | null =>
+  row.ai_feedback_en ? { en: row.ai_feedback_en } : null;
 
 // ---------------------------------------------------------------------------
 // Student feedback job (background)
@@ -223,13 +222,11 @@ async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<voi
     if (!report) throw new Error('report row missing');
 
     const variables = JSON.parse(report.variables) as ReportVariablesV1;
-    const vocabSplit = variables.testCode === '01' ? await loadVocabSplit(env, attemptId) : undefined;
     const answerStats = await loadAnswerStats(env, attemptId);
 
     const userPrompt = buildStudentUserPrompt({
       variables,
-      dimensionLabels: REPORT_STRINGS.en.dimensionLabels,
-      vocabSplit,
+      dimensionLabels: REPORT_STRINGS.dimensionLabels,
       answerStats,
     });
 
@@ -244,10 +241,10 @@ async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<voi
 
     await env.DB.prepare(
       `UPDATE attempt_reports
-       SET ai_status = 'done', ai_feedback_en = ?, ai_feedback_zh = ?, ai_generated_at = ?
+       SET ai_status = 'done', ai_feedback_en = ?, ai_generated_at = ?
        WHERE test_attempt_id = ?`,
     )
-      .bind(feedback.en, feedback.zhHK, Date.now(), attemptId)
+      .bind(feedback.en, Date.now(), attemptId)
       .run();
   } catch (error) {
     console.error(
@@ -261,30 +258,6 @@ async function runStudentFeedbackJob(env: AiEnv, attemptId: string): Promise<voi
       .bind(attemptId)
       .run();
   }
-}
-
-/** Test 1: Part B vocabulary split (common Q61-75 vs specialized Q76-90). */
-async function loadVocabSplit(env: AiEnv, attemptId: string) {
-  const row = await env.DB.prepare(
-    `SELECT
-       SUM(CASE WHEN g.canonical_number BETWEEN 61 AND 75 AND a.is_correct = 1 THEN 1 ELSE 0 END) AS common_correct,
-       SUM(CASE WHEN g.canonical_number BETWEEN 61 AND 75 THEN 1 ELSE 0 END) AS common_total,
-       SUM(CASE WHEN g.canonical_number BETWEEN 76 AND 90 AND a.is_correct = 1 THEN 1 ELSE 0 END) AS specialized_correct,
-       SUM(CASE WHEN g.canonical_number BETWEEN 76 AND 90 THEN 1 ELSE 0 END) AS specialized_total
-     FROM test_attempt_answers a
-     JOIN question_groups g ON g.id = a.question_group_id
-     WHERE a.test_attempt_id = ?`,
-  )
-    .bind(attemptId)
-    .first<{ common_correct: number; common_total: number; specialized_correct: number; specialized_total: number }>();
-
-  if (!row || Number(row.common_total ?? 0) === 0) return undefined;
-  return {
-    commonCorrect: Number(row.common_correct ?? 0),
-    commonTotal: Number(row.common_total ?? 0),
-    specializedCorrect: Number(row.specialized_correct ?? 0),
-    specializedTotal: Number(row.specialized_total ?? 0),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -361,9 +334,9 @@ async function generateClassOverview(request: Request, env: AiEnv, origin: strin
     const overview = await generateWithRetries(env, CLASS_SYSTEM_PROMPT, buildClassUserPrompt(context), usageContext);
     const now = Date.now();
     await env.DB.prepare(
-      'INSERT INTO class_overviews (teacher_key, user_group, content_en, content_zh, created_at, test_code) VALUES (?, ?, ?, ?, ?, ?)',
+      "INSERT INTO class_overviews (teacher_key, user_group, content_en, content_zh, created_at, test_code) VALUES (?, ?, ?, '', ?, ?)",
     )
-      .bind(teacher.key, teacher.user_group, overview.en, overview.zhHK, now, testCode)
+      .bind(teacher.key, teacher.user_group, overview.en, now, testCode)
       .run();
 
     const remaining = Math.max(0, teacher.ai_uses_allowed - (teacher.ai_use_count + 1));
@@ -371,7 +344,7 @@ async function generateClassOverview(request: Request, env: AiEnv, origin: strin
       {
         overview: {
           contentEn: overview.en,
-          contentZh: overview.zhHK,
+          contentZh: '',
           createdAt: now,
           testCode,
         },
@@ -439,74 +412,20 @@ async function buildClassContext(
   userGroup: string,
   testCode: ClassTestCode,
 ): Promise<ClassPromptContext | null> {
-  if (testCode === '01') return buildPaper1ClassContext(env, userGroup);
   return buildAttemptClassContext(env, userGroup, testCode);
 }
 
-/** Paper I: submissions table aggregate (mirrors the teacher dashboard). */
-async function buildPaper1ClassContext(env: AiEnv, userGroup: string): Promise<ClassPromptContext | null> {
-  const result = await env.DB.prepare('SELECT total_score, dimension_scores FROM submissions WHERE user_group = ?')
-    .bind(userGroup)
-    .all<{ total_score: number; dimension_scores: string | null }>();
-
-  const rows = result.results ?? [];
-  if (rows.length === 0) return null;
-
-  const scores = rows.map((row) => Number(row.total_score)).sort((a, b) => a - b);
-  const n = scores.length;
-  const mean = scores.reduce((sum, score) => sum + score, 0) / n;
-  const median = n % 2 === 0 ? (scores[n / 2 - 1] + scores[n / 2]) / 2 : scores[Math.floor(n / 2)];
-  const variance = scores.reduce((sum, score) => sum + (score - mean) ** 2, 0) / n;
-
-  const dimensionSums = new Map<string, { sum: number; count: number }>();
-  for (const row of rows) {
-    if (!row.dimension_scores) continue;
-    try {
-      const parsed = JSON.parse(row.dimension_scores) as Record<string, number>;
-      for (const [key, score] of Object.entries(parsed)) {
-        const agg = dimensionSums.get(key) ?? { sum: 0, count: 0 };
-        agg.sum += Number(score);
-        agg.count += 1;
-        dimensionSums.set(key, agg);
-      }
-    } catch {
-      // Skip malformed rows.
-    }
-  }
-
-  const labels = REPORT_STRINGS.en.dimensionLabels;
-  const dimensionMeans = [...dimensionSums.entries()]
-    .filter(([, agg]) => agg.count > 0)
-    .map(([key, agg]) => ({
-      key,
-      label: labels[key] ?? key,
-      mean: Math.round((agg.sum / agg.count) * 10) / 10,
-      max: 5,
-    }));
-
-  return {
-    testCode: '01',
-    paperLabel: CLASS_PAPER_LABELS['01'],
-    userGroup,
-    submissionCount: n,
-    mean: Math.round(mean * 10) / 10,
-    median: Math.round(median * 10) / 10,
-    stdDev: Math.round(Math.sqrt(variance) * 10) / 10,
-    scoreMax: 90,
-    dimensionMeans,
-  };
-}
-
-const PART_LABELS_BY_TEST: Record<'02' | '03', Record<string, string>> = {
+const PART_LABELS_BY_TEST: Record<ClassTestCode, Record<string, string>> = {
+  '01': { '01': 'Part A Applied Grammar', '02': 'Part B Vocabulary' },
   '02': { '01': 'Part A Listening', '02': 'Part B Reading' },
   '03': { '01': 'Part A Speaking', '02': 'Part B Writing' },
 };
 
-/** Papers II/III: completed attempts + attempt_reports.variables for the teacher group. */
+/** Completed attempts + attempt_reports.variables for the teacher group. */
 async function buildAttemptClassContext(
   env: AiEnv,
   userGroup: string,
-  testCode: '02' | '03',
+  testCode: ClassTestCode,
 ): Promise<ClassPromptContext | null> {
   const result = await env.DB.prepare(
     `SELECT ar.variables
@@ -551,7 +470,13 @@ async function buildAttemptClassContext(
       partBandMap.set(key, (partBandMap.get(key) ?? 0) + 1);
     }
 
-    if (testCode === '02' && vars.scores?.overall?.total > 0) {
+    if (testCode === '01') {
+      const partA = vars.scores?.parts?.find((part) => part.partCode === '01');
+      if (partA && partA.total > 0) {
+        overallScores.push(partA.correct);
+        scoreMax = Math.max(scoreMax, partA.total);
+      }
+    } else if (testCode === '02' && vars.scores?.overall?.total > 0) {
       overallScores.push(vars.scores.overall.correct);
       scoreMax = Math.max(scoreMax, vars.scores.overall.total);
     }
@@ -582,7 +507,7 @@ async function buildAttemptClassContext(
     stdDev = Math.round(Math.sqrt(variance) * 10) / 10;
   }
 
-  const labels = REPORT_STRINGS.en.dimensionLabels;
+  const labels = REPORT_STRINGS.dimensionLabels;
   const partLabels = PART_LABELS_BY_TEST[testCode];
 
   return {
@@ -628,7 +553,7 @@ async function generateWithRetries(
   systemPrompt: string,
   userPrompt: string,
   usageContext?: AiUsageContext,
-): Promise<BilingualFeedback> {
+): Promise<AiFeedbackText> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -668,7 +593,7 @@ async function callDeepSeek(
   env: AiEnv,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   usageContext?: AiUsageContext,
-): Promise<BilingualFeedback> {
+): Promise<AiFeedbackText> {
   const response = await fetch(DEEPSEEK_URL, {
     method: 'POST',
     headers: {
@@ -697,14 +622,13 @@ async function callDeepSeek(
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new Error('DeepSeek returned no content');
 
-  const parsed = JSON.parse(content) as { en?: unknown; zhHK?: unknown };
+  const parsed = JSON.parse(content) as { en?: unknown };
   const en = typeof parsed.en === 'string' ? parsed.en.trim() : '';
-  const zhHK = typeof parsed.zhHK === 'string' ? parsed.zhHK.trim() : '';
-  if (!en || !zhHK) throw new Error('DeepSeek response missing en/zhHK fields');
+  if (!en) throw new Error('DeepSeek response missing the en field');
 
   if (usageContext && payload.usage) {
     await logAiUsage(env, DEEPSEEK_MODEL, payload.usage, usageContext);
   }
 
-  return { en, zhHK };
+  return { en };
 }

@@ -11,38 +11,38 @@
 
 /** Paper I (test 01) — 12 applied-grammar dimensions, 5 MCQs each. */
 export const PAPER1_DIMENSION_KNOWLEDGE: Record<string, string> = {
-  tenses:
-    'Tenses: choosing and combining tense/aspect forms accurately (perfect vs simple, sequence of tenses in extended text). C1 expects rare, hard-to-spot errors even in complex structures.',
-  adjectiveClauses:
-    'Adjective (relative) clauses: relative pronoun choice, defining vs non-defining clauses, reduced relative clauses, and preposition + relative pronoun patterns.',
-  nounClauses:
-    'Noun clauses: that-clauses and wh-clauses as subjects/objects/complements, embedded questions with statement word order, and subjunctive after verbs of demand or suggestion.',
-  adverbialClausesReasons:
-    'Adverbs and adverbial clauses I (reasons, purposes, results): connectors such as because/since/as, so that, such...that, therefore; distinguishing purpose from result and cause.',
-  adverbialClausesMannerTimePlace:
-    'Adverbs and adverbial clauses II (manner, time, place): connectors like as/as if, when/while/once/until, wherever; tense restrictions inside time clauses.',
-  adverbialClausesConcession:
-    'Adverbs and adverbial clauses III (concession and contrast): although/though/even though, despite/in spite of + noun or gerund, whereas/while, however/nevertheless.',
-  conditionals:
-    'Conditionals: real, unreal and mixed conditionals, inverted conditionals (had/were/should), and alternatives such as unless, provided that, but for.',
-  activePassive:
-    'Active vs passive voice: forming passives across tenses, verbs that resist the passive, and choosing voice for emphasis and formal register.',
-  gerundsInfinitives:
-    'Gerunds and infinitives: verbs and expressions that select gerund vs infinitive (sometimes with meaning change, e.g. remember/stop/regret), and gerunds after prepositions.',
+  complexTenses:
+    'Complex tenses and aspect: choosing and combining tense/aspect forms accurately (perfect vs simple, progressive duration, future-in-the-past, sequence of tenses in extended text).',
+  modalsStance:
+    'Modals of stance and deduction: present and past logical deduction, possibility, advice, obligation, criticism, regret, and counterfactual stance.',
+  adjectiveRelativeClauses:
+    'Adjective (relative) clauses: relative pronoun choice and case, defining vs non-defining clauses, relative adverbs, preposition placement, quantitative/partitive/sentential relatives, and reduced relative clauses.',
+  nounClausesNominalisation:
+    'Noun clauses and nominalisation: sentence role and subordinator choice, embedded questions with statement word order, reported speech and sequence of tenses, subjunctive noun clauses, and nominal structures.',
+  adverbialClausesConnectors:
+    'Adverbial clauses and connectors: time, manner, place, cause, result, concession, contrast, real conditions, exception, provision, and discourse-marker reduction.',
+  conditionalsUnrealistic:
+    'Conditionals and unrealistic stance: zero/first/second/third and mixed conditionals, temporal shifts, inverted conditionals, and counterfactual or hypothetical stance.',
   reportedSpeech:
-    'Reported speech and reported questions: backshifting tense, pronoun and time-expression changes, statement word order in reported questions, reporting verbs and their patterns.',
-  collocationsPrepositions:
-    'Collocations and prepositions: fixed verb/noun/adjective + preposition combinations and natural word partnerships that must be recalled as chunks rather than derived by rule.',
-  subjectVerbAgreement:
-    'Subject-verb agreement: agreement with intervening phrases, quantities and fractions, either/neither, collective nouns, and clauses or gerund phrases as subjects.',
+    'Reported speech and indirect discourse: backshifting, reported questions, commands/requests/offers, reporting-verb clause patterns, and deictic anchor shifts.',
+  gerundsInfinitives:
+    'Gerunds, infinitives and complementation: meaning-changing pairs, matrix-verb complementation, preposition complementation, complex structures, and adjectival/nominal complementation.',
+  subjunctiveFormal:
+    'Subjunctive mood and formal requests: mandative subjunctive, negation/voice/aspect, alternatives to the subjunctive, formulaic optative/concession, and formal request syntactic patterns.',
+  inversionFronting:
+    'Inversion and fronting: negative/restrictive adverbial inversion, correlative and additive inversion, place/directive fronting, conditional inversion, and stylistic fronting.',
+  participleReducedClauses:
+    'Participle and reduced clauses: present participles in active actions, past participles in passive actions, perfect participles, dangling modifiers, and reduced clauses with conjunctions.',
+  dependentPrepositions:
+    'Dependent prepositions and complement phrases: verb/adjective/noun + preposition, gerund vs infinitive after prepositions, and idiomatic complex phrases.',
 };
 
-/** Paper I Part B vocabulary bands (canonical Q61-75 vs Q76-90). */
+/** Paper I Part B vocabulary (CEFR-tagged groups 061–090). */
 export const PAPER1_VOCAB_KNOWLEDGE = {
   vocabCommon:
-    'Vocabulary (common), Q61-75: common collocations, idiomatic expressions, colloquial phrases and less common words; recognising nuanced meaning and formal vs informal register (CEFR C1).',
+    'Vocabulary (B1/B2 groups): high-frequency academic and general collocations; recognising nuanced meaning and register in everyday and study contexts.',
   vocabSpecialized:
-    'Vocabulary (specialized terms), Q76-90: highly nuanced vocabulary including specialized terms across fields such as science, literature and business, plus idiomatic and rhetorical language (CEFR C2).',
+    'Vocabulary (C1/C2 groups): lower-frequency and specialised lexis across academic and professional fields, plus idiomatic and rhetorical language.',
 };
 
 /** Paper II (test 02) — difficulty-band dimensions used in the rv1 variables. */

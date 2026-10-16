@@ -21,6 +21,8 @@ export default {
       },
       spacing: {
         nav: '5.5rem',
+        // Marketing nav grows a second row of audience tabs below lg.
+        'nav-marketing': '9.25rem',
       },
       maxWidth: {
         content: '1800px',

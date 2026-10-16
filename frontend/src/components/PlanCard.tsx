@@ -1,3 +1,5 @@
+import { useLocale } from '../i18n/LocaleContext';
+
 type PlanCardProps = {
   name: string;
   price: string;
@@ -8,6 +10,8 @@ type PlanCardProps = {
 };
 
 export function PlanCard({ name, price, features, cta, featured = false, onClick }: PlanCardProps) {
+  const { t } = useLocale();
+
   return (
     <article
       role="button"
@@ -25,7 +29,7 @@ export function PlanCard({ name, price, features, cta, featured = false, onClick
     >
       {featured ? (
         <span className="mb-4 inline-flex w-fit rounded-full border border-edt-neon px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-edt-neon">
-          Popular
+          {t.purchase.popular}
         </span>
       ) : null}
       <h3 className="font-display text-xl font-bold text-edt-soft">{name}</h3>

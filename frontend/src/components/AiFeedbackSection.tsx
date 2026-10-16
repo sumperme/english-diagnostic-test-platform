@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { useLocale } from '../i18n/LocaleContext';
+import { getMessages } from '../i18n/messages';
 import { fetchAiFeedback, startAiFeedback } from '../lib/api';
 import type { AiFeedback, AiFeedbackStatus } from '../types';
 
@@ -17,7 +17,7 @@ function SparkleIcon({ className }: { className?: string }) {
 
 /** Rotating status line + bouncing dots inside an EDT-styled loading card. */
 function LoadingCard() {
-  const { t } = useLocale();
+  const t = getMessages('en');
   const lines = t.report.aiLoadingLines;
   const [lineIndex, setLineIndex] = useState(0);
 
@@ -69,6 +69,9 @@ export function FeedbackBody({ content }: { content: string }) {
   );
 }
 
+/** Candidate reports hide AI feedback until the feature is switched back on. */
+const SHOW_REPORT_AI_FEEDBACK = false;
+
 /**
  * AI feedback section + centered action row for both papers' result screens.
  * The section is hidden until the candidate clicks Generate (or a feedback
@@ -83,7 +86,22 @@ export function AiFeedbackSection({
   sessionToken: string;
   downloadButton: ReactNode;
 }) {
-  const { t, language } = useLocale();
+  if (!SHOW_REPORT_AI_FEEDBACK) {
+    return <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">{downloadButton}</div>;
+  }
+  return <AiFeedbackPanel attemptId={attemptId} sessionToken={sessionToken} downloadButton={downloadButton} />;
+}
+
+function AiFeedbackPanel({
+  attemptId,
+  sessionToken,
+  downloadButton,
+}: {
+  attemptId: string;
+  sessionToken: string;
+  downloadButton: ReactNode;
+}) {
+  const t = getMessages('en');
   const [status, setStatus] = useState<AiFeedbackStatus>('none');
   const [feedback, setFeedback] = useState<AiFeedback | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -156,7 +174,7 @@ export function AiFeedbackSection({
     }
   };
 
-  const localizedFeedback = feedback ? (language === 'zh-HK' ? feedback.zhHK : feedback.en) : null;
+  const localizedFeedback = feedback?.en ?? null;
   const generateDisabled = status === 'pending' || status === 'done';
 
   return (

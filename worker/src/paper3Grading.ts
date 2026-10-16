@@ -1,6 +1,5 @@
 // Paper III async grading: Queue consumer + DeepSeek rubric marks + rv1 report.
 
-import { computePercentileStats } from './admin';
 import { logAiUsage, type AiUsageContext } from './aiUsageLog';
 import {
   BAND_LEVELS_P3,
@@ -12,7 +11,11 @@ import {
   WRITING_TASK_RUBRICS,
   type Paper3Mark,
 } from './paper3Rubrics';
-import { fetchTranscript } from './paper3Assembly';
+import {
+  createVerbatimTranscript,
+  fetchTranscript,
+  uploadAudioToAssemblyAI,
+} from './paper3Assembly';
 import { REPORT_VARIABLES_VERSION, type BandRef, type ReportVariablesV1 } from './reportVariables';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
@@ -39,6 +42,8 @@ type AnswerGradeRow = {
   transcript_text: string | null;
   transcript_status: string;
   assemblyai_transcript_id: string | null;
+  audio_r2_key: string | null;
+  audio_content_type: string | null;
   ai_mark_json: string | null;
   response_type: string;
   dimension_key: string | null;
@@ -170,7 +175,78 @@ export async function enqueuePaper3Grade(
   await gradePaper3Attempt(env, attemptId, autoSubmitted);
 }
 
+/** Restart AssemblyAI when audio is on R2 but STT never got a transcript id (e.g. missing prod key). */
+async function restartSttFromR2(
+  env: Paper3GradeEnv,
+  attemptId: string,
+  questionCode: string,
+  r2Key: string,
+  contentType: string | null,
+): Promise<boolean> {
+  if (!env.ASSEMBLYAI_API_KEY) return false;
+  const obj = await env.R2_ASSETS.get(r2Key);
+  if (!obj) return false;
+  const bytes = await obj.arrayBuffer();
+  if (bytes.byteLength === 0) return false;
+  const ct = contentType || obj.httpMetadata?.contentType || 'audio/webm';
+  const uploadUrl = await uploadAudioToAssemblyAI(env, bytes, ct);
+  const webhookBase =
+    env.ASSEMBLYAI_WEBHOOK_BASE && env.ASSEMBLYAI_WEBHOOK_BASE.startsWith('http')
+      ? env.ASSEMBLYAI_WEBHOOK_BASE
+      : undefined;
+  const transcriptId = await createVerbatimTranscript(env, uploadUrl, webhookBase);
+  await env.DB.prepare(
+    `UPDATE test_attempt_answers
+     SET assemblyai_transcript_id = ?, transcript_status = 'queued', transcript_text = NULL,
+         transcript_words_json = NULL, ai_mark_json = NULL, ai_band_key = NULL
+     WHERE test_attempt_id = ? AND question_code = ?`,
+  )
+    .bind(transcriptId, attemptId, questionCode)
+    .run();
+  return true;
+}
+
 export async function syncPendingTranscripts(env: Paper3GradeEnv, attemptId: string): Promise<boolean> {
+  // Recover saved audio that never received an AssemblyAI id (prod secret missing, waitUntil fail).
+  const orphans = await env.DB.prepare(
+    `SELECT a.question_code, a.audio_r2_key, a.audio_content_type, a.transcript_status, a.assemblyai_transcript_id,
+            a.transcript_text
+     FROM test_attempt_answers a
+     JOIN question_groups g ON g.id = a.question_group_id
+     WHERE a.test_attempt_id = ? AND g.response_type = 'speaking'
+       AND a.audio_r2_key IS NOT NULL AND a.audio_r2_key != ''
+       AND (
+         a.assemblyai_transcript_id IS NULL
+         OR (
+           a.transcript_status = 'error'
+           AND a.transcript_text LIKE '%ASSEMBLYAI_API_KEY not configured%'
+         )
+       )`,
+  )
+    .bind(attemptId)
+    .all<{
+      question_code: string;
+      audio_r2_key: string;
+      audio_content_type: string | null;
+      transcript_status: string;
+      assemblyai_transcript_id: string | null;
+      transcript_text: string | null;
+    }>();
+
+  for (const row of orphans.results ?? []) {
+    try {
+      await restartSttFromR2(
+        env,
+        attemptId,
+        row.question_code,
+        row.audio_r2_key,
+        row.audio_content_type,
+      );
+    } catch (error) {
+      console.error('STT restart from R2 failed', error);
+    }
+  }
+
   const pending = await env.DB.prepare(
     `SELECT question_code, assemblyai_transcript_id, transcript_status
      FROM test_attempt_answers
@@ -244,7 +320,7 @@ export async function gradePaper3Attempt(
 
   const rows = await env.DB.prepare(
     `SELECT a.question_code, a.text_response, a.transcript_text, a.transcript_status,
-            a.assemblyai_transcript_id, a.ai_mark_json,
+            a.assemblyai_transcript_id, a.audio_r2_key, a.audio_content_type, a.ai_mark_json,
             g.response_type, d.key AS dimension_key, p.part_code, p.skill AS part_skill,
             q.prompt_text, g.canonical_number
      FROM test_attempt_answers a
@@ -263,26 +339,60 @@ export async function gradePaper3Attempt(
   const writing = answers.filter((r) => r.response_type === 'writing');
 
   for (const row of speaking) {
+    const hasAudio = Boolean(row.audio_r2_key);
     if (
-      row.assemblyai_transcript_id &&
-      (row.transcript_status === 'queued' || row.transcript_status === 'processing')
+      hasAudio &&
+      (row.transcript_status === 'queued' ||
+        row.transcript_status === 'processing' ||
+        (row.assemblyai_transcript_id &&
+          row.transcript_status !== 'completed' &&
+          row.transcript_status !== 'error'))
     ) {
+      return 'pending';
+    }
+    // Saved audio still waiting for STT restart / first id — do not mark unanswered.
+    if (hasAudio && !row.assemblyai_transcript_id && row.transcript_status !== 'completed') {
       return 'pending';
     }
   }
 
   try {
     for (const row of speaking) {
-      if (row.ai_mark_json) continue;
+      const hasAudio = Boolean(row.audio_r2_key);
+      let existingMark: unknown = null;
+      if (row.ai_mark_json) {
+        try {
+          existingMark = JSON.parse(row.ai_mark_json);
+        } catch {
+          existingMark = null;
+        }
+      }
+      // Skip only real marks — allow regrade of false "unanswered" when audio exists.
+      if (existingMark && !isUnansweredMark(existingMark)) continue;
+      if (isUnansweredMark(existingMark) && !hasAudio) continue;
+
       const transcriptOk =
         row.transcript_status === 'completed' && (row.transcript_text ?? '').trim().length > 0;
-      if (!transcriptOk) {
+      if (!hasAudio) {
         await env.DB.prepare(
           `UPDATE test_attempt_answers SET ai_mark_json = ?, ai_band_key = NULL WHERE test_attempt_id = ? AND question_code = ?`,
         )
           .bind(JSON.stringify(unansweredMark(row.question_code)), attemptId, row.question_code)
           .run();
         continue;
+      }
+      if (!transcriptOk) {
+        // Audio saved but STT empty/error after retries: keep pending for queue retry,
+        // except empty completed transcript (= silence) or terminal STT error → unanswered.
+        if (row.transcript_status === 'completed' || row.transcript_status === 'error') {
+          await env.DB.prepare(
+            `UPDATE test_attempt_answers SET ai_mark_json = ?, ai_band_key = NULL WHERE test_attempt_id = ? AND question_code = ?`,
+          )
+            .bind(JSON.stringify(unansweredMark(row.question_code)), attemptId, row.question_code)
+            .run();
+          continue;
+        }
+        return 'pending';
       }
       const mark = await markSpeaking(env, row, attemptId);
       mark.questionCode = row.question_code;
@@ -367,36 +477,10 @@ export async function gradePaper3Attempt(
     }, 0);
 
     const userGroup = attempt.user_group ?? 'General Learner';
-    const allStats = await env.DB.prepare(
-      `SELECT COUNT(*) as cohortSize, AVG(overall_score) as cohortMean,
-              SUM(CASE WHEN overall_score > ? THEN 1 ELSE 0 END) as strictlyAbove
-       FROM test_attempts WHERE test_id = ? AND status = 'completed' AND id != ?`,
-    )
-      .bind(overallScoreProxy, attempt.test_id, attemptId)
-      .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
-    const groupStats = await env.DB.prepare(
-      `SELECT COUNT(*) as cohortSize, AVG(a.overall_score) as cohortMean,
-              SUM(CASE WHEN a.overall_score > ? THEN 1 ELSE 0 END) as strictlyAbove
-       FROM test_attempts a LEFT JOIN users u ON u.id = a.user_id
-       WHERE a.test_id = ? AND a.status = 'completed' AND a.id != ? AND u.user_group = ?`,
-    )
-      .bind(overallScoreProxy, attempt.test_id, attemptId, userGroup)
-      .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
 
     await env.DB.prepare(`UPDATE test_attempts SET overall_score = ? WHERE id = ?`)
       .bind(overallScoreProxy, attemptId)
       .run();
-
-    const cohortAll = computePercentileStats({
-      cohortSize: Number(allStats?.cohortSize ?? 0) + 1,
-      cohortMean: allStats?.cohortMean ?? null,
-      strictlyAbove: Number(allStats?.strictlyAbove ?? 0),
-    });
-    const cohortGroup = computePercentileStats({
-      cohortSize: Number(groupStats?.cohortSize ?? 0) + 1,
-      cohortMean: groupStats?.cohortMean ?? null,
-      strictlyAbove: Number(groupStats?.strictlyAbove ?? 0),
-    });
 
     const endTime = attempt.end_time ?? Date.now();
     const startTime = attempt.start_time ?? endTime;
@@ -432,16 +516,6 @@ export async function gradePaper3Attempt(
         parts: partBands,
       },
       weakDimensionKeys: [],
-      cohort: {
-        percentileRank: cohortAll.percentileRank,
-        cohortRank: cohortAll.cohortRank,
-        cohortSize: cohortAll.cohortSize,
-        cohortMean: cohortAll.cohortMean,
-        groupPercentileRank: cohortGroup.percentileRank,
-        groupCohortRank: cohortGroup.cohortRank,
-        groupCohortSize: cohortGroup.cohortSize,
-        groupCohortMean: cohortGroup.cohortMean,
-      },
     };
 
     const now = Date.now();

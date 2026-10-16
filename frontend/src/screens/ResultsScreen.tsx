@@ -1,152 +1,59 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
-import { RadarChart } from '../components/RadarChart';
-import { ANSWER_KEY, type Question } from '../data/questions';
-import { DIMENSIONS } from '../data/dimensions';
-import { useLocale } from '../i18n/LocaleContext';
+import {
+  Paper1Concluding,
+  Paper1GrowthRoadmap,
+  Paper1MasteryProfile,
+  Paper1Strengths,
+  Paper1Summary,
+  Paper1Vocabulary,
+  ReportBand,
+} from '../components/Paper1Report';
+import { getMessages } from '../i18n/messages';
 import { downloadServerReportPdf } from '../lib/api';
-import { downloadReportPdf } from '../lib/pdf';
-import { formatDate } from '../lib/format';
-import { levelBadgeClass, scoreBarColor } from '../lib/scoring';
-import type { ReportResult, Session } from '../types';
+import type { Session, Test2Result } from '../types';
 
-type Filter = 'all' | 'incorrect' | 'unanswered';
-
-const QID_TO_DIMENSION_NAME = new Map<string, string>(
-  DIMENSIONS.flatMap((dimension) => dimension.qids.map((qid) => [qid, dimension.name] as [string, string])),
-);
-
-function formatCohortRankDisplay(
-  rank: number | null | undefined,
-  size: number,
-  pendingLabel: string,
-  ofLabel: string,
-): string {
-  if (size < 2) return pendingLabel;
-  if (rank == null) return '—';
-  return `${rank} ${ofLabel} ${size}`;
-}
-
-type ReviewRow = { q: Question; seq: number; label: string };
-
-function ReviewList({ title, rows, result }: { title: string; rows: ReviewRow[]; result: ReportResult }) {
-  const { t } = useLocale();
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <span className="text-sm font-bold text-slate-700">
-          {title} <span className="text-xs font-normal text-slate-400">({rows.length})</span>
-        </span>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {rows.map(({ q, seq, label }) => {
-          const userAnswer = result.answers[q.id];
-          const correct = ANSWER_KEY[q.id];
-          const ok = userAnswer === correct;
-          const userOpt = q.opts.find((opt) => opt.k === userAnswer);
-          const correctOpt = q.opts.find((opt) => opt.k === correct);
-
-          return (
-            <div key={q.id} className="px-5 py-4">
-              <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">Q{seq}</span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500">
-                  {label}
-                </span>
-              </div>
-              <p className="mb-2 text-sm leading-relaxed text-slate-700">{q.text}</p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className={`rounded-full px-2.5 py-1 font-medium ${!userAnswer ? 'bg-slate-100 text-slate-500' : ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                  {t.report.yourAnswer}: {userOpt ? `(${userOpt.k}) ${userOpt.t}` : t.report.notAnswered}
-                </span>
-                {!ok ? (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700">
-                    {t.report.correct}: ({correctOpt?.k}) {correctOpt?.t}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
+/** Paper I report (rv3): section order follows the Oct 2026 sample report. */
 export function ResultsScreen({
   result,
   session,
   onHome,
 }: {
-  result: ReportResult;
+  result: Test2Result;
   session: Session;
   onHome: () => void;
 }) {
-  const { t, language } = useLocale();
-  const [filter, setFilter] = useState<Filter>('all');
+  const t = getMessages('en');
+  const p = t.report.paper1;
   const [isExporting, setIsExporting] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
-  const duration = `${Math.floor(result.durationSec / 60)}m ${result.durationSec % 60}s`;
-  const dateLocale = language === 'zh-HK' ? 'zh-HK' : 'en-GB';
+  const [pdfError, setPdfError] = useState(false);
+  const variables = result.variables;
+  const report = variables?.paper1;
+  const feedback = result.feedback ?? {};
 
-  const filterQuestion = (qid: string) => {
-    const userAnswer = result.answers[qid];
-    const correct = ANSWER_KEY[qid];
-    if (filter === 'incorrect') return Boolean(userAnswer) && userAnswer !== correct;
-    if (filter === 'unanswered') return !userAnswer;
-    return true;
-  };
-  // Review in the exact sequence the candidate saw (shuffled order), numbered by
-  // that sequence. Labels: Part A = grammar dimension name; Part B = vocab band.
-  const questionLabel = (q: Question) =>
-    q.part === 'A'
-      ? QID_TO_DIMENSION_NAME.get(q.id) ?? t.report.appliedGrammar
-      : q.canonicalNumber <= 75
-        ? t.report.vocabCollocations
-        : t.report.vocabSpecialized;
-  const reviewRows: ReviewRow[] = result.questions
-    .map((q, index) => ({ q, seq: index + 1, label: questionLabel(q) }))
-    .filter(({ q }) => filterQuestion(q.id));
+  if (!variables || !report) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-500">
+          {t.test2.startError}
+        </div>
+      </div>
+    );
+  }
 
   const exportPdf = async () => {
     setIsExporting(true);
+    setPdfError(false);
     try {
-      const attemptId = result.backendData?.attemptId;
-      if (attemptId && !result.backendError) {
-        const voucher = session.voucherCode ?? 'unknown';
-        await downloadServerReportPdf(
-          attemptId,
-          language,
-          session.sessionToken,
-          `EDT-Report_${voucher}_01_${attemptId}.pdf`,
-        );
-        return;
-      }
-      if (!reportRef.current) return;
-      await document.fonts.ready;
-      await downloadReportPdf(reportRef.current, `EDT-Report-${result.candidateInfo.id || 'candidate'}.pdf`);
-    } catch (error) {
-      console.error('PDF export failed:', error);
+      const voucher = session.voucherCode ?? 'unknown';
+      await downloadServerReportPdf(result.attemptId, session.sessionToken, `EDT-Report_${voucher}_01_${result.attemptId}.pdf`);
+    } catch {
+      setPdfError(true);
     } finally {
       setIsExporting(false);
     }
   };
-
-  // AI feedback needs the server-linked attempt (dual-write); without it the
-  // legacy download button renders alone.
-  const serverAttemptId = !result.backendError ? result.backendData?.attemptId : null;
-
-  const downloadPdfButton = (
-    <button
-      onClick={() => void exportPdf()}
-      disabled={isExporting}
-      className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {isExporting ? t.report.downloading : t.report.downloadPdf}
-    </button>
-  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -155,223 +62,42 @@ export function ResultsScreen({
       <div className="-mt-nav bg-edt-forest px-4 pb-8 pt-nav text-white no-print">
         <div className="mx-auto max-w-[1200px]">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1 text-sm font-medium text-edt-neon">
-            {result.autoSubmitted ? t.report.autoSubmitted : t.report.submitted}
+            {variables.attempt.autoSubmitted ? t.report.autoSubmitted : t.report.submitted}
           </div>
-          <h1 className="text-3xl font-extrabold">{t.report.title}</h1>
-          <p className="mt-1 text-sm text-edt-soft/70">{t.report.subtitle}</p>
+          <h1 className="text-3xl font-semibold">{p.reportTitle}</h1>
+          <p className="mt-1 text-sm text-edt-soft/70">{p.subtitle}</p>
         </div>
       </div>
 
-      <main className="mx-auto w-full max-w-[1200px] px-4 py-8">
-        <div ref={reportRef} id="report-export-root" className="space-y-8">
-          <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.candidateInfo}</h2>
-            <div className="mb-4 inline-flex items-center rounded-full border border-edt-forest/20 bg-edt-forest/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-edt-forest">
-              {t.report.userGroup}: {result.candidateInfo.userGroup}
-            </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {[
-                [t.report.name, result.candidateInfo.name],
-                [t.report.candidateId, result.candidateInfo.id],
-                [t.report.date, formatDate(result.candidateInfo.testDate, dateLocale)],
-                [t.report.mode, result.candidateInfo.mode],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="mb-0.5 text-xs font-medium text-slate-400">{label}</p>
-                  <p className="break-words text-sm font-semibold text-slate-700">{value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+      <main className="mx-auto w-full max-w-[1200px] space-y-6 px-4 py-8">
+        <Paper1Summary variables={variables} report={report} />
 
-          <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 print-section">
-            {[
-              { label: t.report.partA, sub: t.report.appliedGrammar, correct: result.scores.partA.correct, total: result.scores.partA.total, pct: result.scores.partA.pct },
-              { label: t.report.partB, sub: t.report.vocabulary, correct: result.scores.partB.correct, total: result.scores.partB.total, pct: result.scores.partB.pct },
-              { label: t.report.partBVocabI, sub: t.report.vocabCollocations, correct: result.scores.partBVocabI.correct, total: result.scores.partBVocabI.total, pct: result.scores.partBVocabI.pct },
-              { label: t.report.partBVocabII, sub: t.report.vocabSpecialized, correct: result.scores.partBVocabII.correct, total: result.scores.partBVocabII.total, pct: result.scores.partBVocabII.pct },
-              { label: t.report.final, sub: t.report.overallScore, correct: result.scores.total.correct, total: result.scores.total.total, pct: result.scores.total.pct, hi: true },
-            ].map((score) => (
-              <div key={score.label} className={`rounded-2xl border p-5 text-center ${score.hi ? 'border-edt-forest bg-edt-forest text-edt-neon' : 'border-slate-100 bg-white'}`}>
-                <p className={`mb-1 text-xs font-bold uppercase tracking-widest ${score.hi ? 'text-edt-neon' : 'text-slate-400'}`}>{score.label}</p>
-                <p className={`mb-0.5 text-3xl font-extrabold leading-none ${score.hi ? 'text-white' : 'text-slate-800'}`}>
-                  {score.correct}<span className="ml-0.5 text-base font-medium text-slate-400">/{score.total}</span>
-                </p>
-                <p className="text-sm font-semibold">{score.pct}%</p>
-                <p className={`mt-1 text-xs ${score.hi ? 'text-edt-soft/70' : 'text-slate-400'}`}>{score.sub}</p>
-              </div>
-            ))}
-          </section>
+        <ReportBand>{p.partATitle}</ReportBand>
+        <Paper1MasteryProfile report={report} />
 
-          <section className={`rounded-2xl border-2 p-6 print-section ${result.cefrBand.colorCls}`}>
-            <p className="mb-1 text-xs font-bold uppercase tracking-widest opacity-70">{t.report.cefrLevel}</p>
-            <div className="mb-2 flex items-baseline gap-3">
-              <span className="text-4xl font-extrabold">{result.cefrBand.cefr}</span>
-              <span className="text-base font-semibold opacity-80">{result.cefrBand.label}</span>
-            </div>
-            <p className="mb-2 text-sm font-semibold opacity-90">{result.cefrBand.headline}</p>
-            <p className="text-sm leading-relaxed opacity-80">{result.cefrBand.description}</p>
-            <div className="mt-4 grid gap-3 border-t border-current/10 pt-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.report.approxIelts}</p>
-                <p className="text-sm font-semibold opacity-90">{result.cefrBand.ielts}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.report.approxToefl}</p>
-                <p className="text-sm font-semibold opacity-90">{result.cefrBand.toefl}</p>
-              </div>
-            </div>
-            <p className="mt-3 text-xs leading-relaxed italic opacity-70">{t.report.proficiencyDisclaimer}</p>
-          </section>
+        <ReportBand>{p.evaluationTitle}</ReportBand>
+        <Paper1Strengths report={report} feedback={feedback} />
+        <Paper1GrowthRoadmap report={report} feedback={feedback} />
+        <Paper1Concluding report={report} feedback={feedback} />
 
-          {result.backendData ? (
-            <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">{t.report.cohortRanking}</h3>
-              <div className="grid gap-6 lg:grid-cols-2">
-                {[
-                  {
-                    title: t.report.studyGroup,
-                    rank: result.backendData.groupCohortRank,
-                    mean: result.backendData.groupCohortMean,
-                    size: result.backendData.groupCohortSize,
-                    accent: 'border-emerald-100 bg-emerald-50/40',
-                    valueCls: 'text-emerald-700',
-                  },
-                  {
-                    title: t.report.allLearners,
-                    rank: result.backendData.cohortRank,
-                    mean: result.backendData.cohortMean,
-                    size: result.backendData.cohortSize,
-                    accent: 'border-sky-100 bg-sky-50/40',
-                    valueCls: 'text-sky-700',
-                  },
-                ].map((cohort) => (
-                  <div key={cohort.title} className={`rounded-xl border p-4 ${cohort.accent}`}>
-                    <p className="mb-3 text-sm font-bold text-slate-700">{cohort.title}</p>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortRank}</p>
-                        <p className={`text-lg font-extrabold leading-snug ${cohort.size < 2 ? 'text-sm font-semibold text-slate-500' : cohort.valueCls}`}>
-                          {formatCohortRankDisplay(cohort.rank, cohort.size, t.report.cohortRankPending, t.report.cohortRankOf)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortAverage}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{cohort.mean ?? '-'}</p>
-                      </div>
-                      <div className="rounded-xl bg-white/80 p-3 text-center">
-                        <p className="text-xs font-semibold text-slate-500">{t.report.cohortSize}</p>
-                        <p className="text-2xl font-extrabold text-slate-700">{cohort.size}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs text-slate-400">{t.report.basedOn}</p>
-            </section>
-          ) : result.backendError ? (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 no-print">
-              {t.report.backendError}
-            </section>
-          ) : null}
+        <ReportBand>{p.partBTitle}</ReportBand>
+        <Paper1Vocabulary report={report} feedback={feedback} />
 
-          <section className="overflow-visible rounded-2xl border border-slate-100 bg-white print-section">
-            <div className="overflow-visible p-6 pb-2">
-              <p className="mb-2 text-center text-xs font-semibold uppercase tracking-widest text-slate-400">{t.report.dimensionsTitle}</p>
-              <div className="report-radar-export mx-auto w-1/2 max-w-[50%] overflow-visible">
-                <RadarChart
-                  axes={result.dimensions.map((dimension) => ({
-                    id: dimension.id,
-                    short: dimension.short,
-                    score: dimension.score,
-                    max: 5,
-                  }))}
-                />
-              </div>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {result.dimensions.map((dimension) => (
-                <div key={dimension.id} className="px-5 py-4">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 text-sm font-semibold text-slate-700">
-                      {dimension.id}. {dimension.name}
-                    </p>
-                    <div className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${levelBadgeClass(dimension.level)}`}>
-                      {dimension.score}/5 - {t.report.levelLabels[dimension.levelKey]}
-                    </div>
-                  </div>
-                  <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                    <div className={`h-full rounded-full ${scoreBarColor(dimension.score, 5)}`} style={{ width: `${(dimension.score / 5) * 100}%` }} />
-                  </div>
-                  <p className="text-xs leading-relaxed text-slate-500">{t.report.dimensionNarratives[dimension.levelKey]}</p>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-slate-100 bg-slate-50 px-5 py-4">
-              <p className="text-xs leading-relaxed text-slate-500">{t.report.overallOnlyNote}</p>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-100 bg-white p-6 print-section">
-            <h3 className="mb-3 text-sm font-bold uppercase tracking-widest text-slate-700">{t.report.recommendations}</h3>
-            <p className="text-sm leading-relaxed text-slate-600">{result.reportSnapshot.recommendation}</p>
-            {result.reportSnapshot.weakDimensions.length > 0 ? (
-              <div className="mt-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t.report.priorityDimensions}</p>
-                <div className="flex flex-wrap gap-2">
-                  {result.reportSnapshot.weakDimensions.map((dimension) => (
-                    <span key={dimension} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
-                      {dimension}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-400">
-              <span>
-                {t.report.duration}: {duration}
-              </span>
-              <span>Report v{result.reportVersion}</span>
-            </div>
-          </section>
-        </div>
-
-        <section className="mt-8 no-print">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-slate-800">{t.report.questionReview}</h3>
-            <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs">
-              {[
-                ['all', t.report.all],
-                ['incorrect', t.report.incorrect],
-                ['unanswered', t.report.unanswered],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setFilter(value as Filter)}
-                  className={`rounded-lg px-3 py-1.5 font-semibold transition-all ${filter === value ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {reviewRows.length > 0 ? (
-            <ReviewList title={t.report.questionReview} rows={reviewRows} result={result} />
-          ) : (
-            <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-400">{t.report.noQuestions}</div>
-          )}
-        </section>
-
-        <div className="pb-4 pt-8 no-print">
-          {serverAttemptId ? (
-            <AiFeedbackSection
-              attemptId={serverAttemptId}
-              sessionToken={session.sessionToken}
-              downloadButton={downloadPdfButton}
-            />
-          ) : (
-            <div className="flex justify-center">{downloadPdfButton}</div>
-          )}
+        <div className="pb-4 pt-4 no-print">
+          {pdfError ? <p className="mb-3 text-center text-sm text-rose-600">{t.test2.pdfError}</p> : null}
+          <AiFeedbackSection
+            attemptId={result.attemptId}
+            sessionToken={session.sessionToken}
+            downloadButton={
+              <button
+                onClick={() => void exportPdf()}
+                disabled={isExporting}
+                className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExporting ? t.report.downloading : t.report.downloadPdf}
+              </button>
+            }
+          />
         </div>
       </main>
     </div>

@@ -4,13 +4,15 @@ import type { MarketingPage } from '../types';
 
 export function MarketingScreen({
   page,
+  anchor,
   onNavigate,
   onLogin,
   onLogoClick,
   onTeacherLogin,
 }: {
   page: MarketingPage;
-  onNavigate: (page: MarketingPage) => void;
+  anchor?: string;
+  onNavigate: (page: MarketingPage, anchor?: string) => void;
   onLogin: () => void;
   onLogoClick: () => void;
   onTeacherLogin?: (key: string) => Promise<void>;
@@ -20,6 +22,7 @@ export function MarketingScreen({
   return (
     <MarketingPageLayout
       page={page}
+      anchor={anchor}
       content={t.marketing[page]}
       onNavigate={onNavigate}
       onLogin={onLogin}

@@ -26,7 +26,9 @@ $privatePathPatterns = @(
     '^Client_Feedback/',
     '^frontend/dist/',
     '^\.wrangler/',
-    '^worker/\.wrangler/'
+    '^worker/\.wrangler/',
+    '^tmp_analysis/',
+    '^db_backup/'
 )
 
 function Write-Step([string]$text) {
@@ -53,7 +55,10 @@ function Get-ChangedPaths {
         }
 
         $path = $line.Substring(3).Trim()
-        if ($line.StartsWith('R ') -or $line.StartsWith('C ')) {
+        # Rename/copy entries carry "old -> new". The second status column varies
+        # (RM, RD, R ), so test the first column only; matching on "R " missed
+        # every staged rename and fed git add the whole arrow string.
+        if ($line[0] -eq 'R' -or $line[0] -eq 'C') {
             $path = ($path -split ' -> ')[-1].Trim()
         }
 
@@ -151,7 +156,7 @@ git push origin main
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "Push failed. You may need to sign in to GitHub." -ForegroundColor Red
-    Write-Host "See PUBLISH_UI.md section 'If push asks you to log in'." -ForegroundColor Yellow
+    Write-Host "See docs/PUBLISH_UI.md section 'If push asks you to log in'." -ForegroundColor Yellow
     exit 1
 }
 
@@ -212,7 +217,7 @@ Write-Host "  - Secrets: DEEPSEEK_API_KEY, ASSEMBLYAI_API_KEY, ASSEMBLYAI_WEBHOO
 Write-Host "  - Queue: confirm PAPER3_GRADE / edt-paper3-grade on the deploy log"
 Write-Host "  - Expect after migrate: 3 tests, 145 question groups/questions"
 Write-Host ""
-Write-Host "Details: PUBLISH_UI.md (Paper III go-live checklist)"
+Write-Host "Details: docs/PUBLISH_UI.md (Paper III go-live checklist)"
 
 if ($DeployLocal) {
     Write-Step "Deploying to Cloudflare locally (wrangler)..."

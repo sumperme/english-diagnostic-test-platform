@@ -1,4 +1,4 @@
-// Randomization-engine attempts API (used by Test 2; Test 1 stays on the legacy flow).
+// Randomization-engine attempts API (Papers I–III).
 //
 //   POST /api/attempts                { testCode, candidateInfo: { name, id } }   Bearer session
 //   POST /api/attempts/:id/answers    { questionCode, selectedOption }            Bearer session (owner)
@@ -8,14 +8,29 @@
 // The start endpoint picks ONE random variant per question group, persists the
 // served configuration into test_attempt_answers, and never sends correct
 // answers or audio transcripts to the client. Scoring happens server-side at
-// submit, which also writes attempt_reports (rv1) and consumes one per-test
-// voucher use.
+// submit, which also writes attempt_reports (rv1 Papers II/III, rv3 Paper I) and
+// consumes one per-test voucher use. Completed student report payloads contain
+// variables plus the resolved Paper I feedback rows — no stems, options, or
+// correct answers. Teachers may fetch Paper III productions (recordings /
+// transcripts / essays) on the class dashboard.
 
-import { computePercentileStats } from './admin';
 import { consumeVoucherUse, getSession } from './index';
 import { enqueuePaper3Grade, type Paper3GradeEnv } from './paper3Grading';
 import { authorizeAttemptAccess } from './reports';
-import { REPORT_VARIABLES_VERSION, type LevelKey, type ReportVariablesV1 } from './reportVariables';
+import {
+  buildPaper1Report,
+  loadPaper1Feedback,
+  paper1Bands,
+  paper1Dimensions,
+  PAPER1_REPORT_VARIABLES_VERSION,
+  type Paper1BandRow,
+} from './paper1Report';
+import {
+  REPORT_VARIABLES_VERSION,
+  type FeedbackItem,
+  type LevelKey,
+  type ReportVariablesV1,
+} from './reportVariables';
 
 type AttemptsEnv = {
   DB: D1Database;
@@ -80,15 +95,7 @@ export type AttemptItem = {
   dimensionKey?: string | null;
 };
 
-type BandRow = {
-  test_part_id: number | null;
-  min_correct: number;
-  max_correct: number;
-  band_key: string;
-  cefr_label: string;
-  ielts_indicative: string | null;
-  toefl_indicative: string | null;
-};
+type BandRow = Paper1BandRow & { test_part_id: number | null };
 
 const OPTION_KEYS = ['A', 'B', 'C', 'D'];
 
@@ -454,13 +461,33 @@ async function submitAttempt(
     .first<{ test_code: string }>();
 
   // Idempotency: return the stored report if already completed.
-  // Paper III: nudge grading again on retry when still pending/failed (e.g. lost queue message).
+  // Paper III: nudge grading again on retry when still pending/failed (e.g. lost queue message),
+  // or when done but speaking audio is stuck on STT config errors (recoverable).
   if (attempt.status === 'completed') {
     if (testRow?.test_code === '03') {
       const gradeRow = await env.DB.prepare('SELECT grading_status FROM test_attempts WHERE id = ?')
         .bind(attemptId)
         .first<{ grading_status: string }>();
-      const gradingStatus = gradeRow?.grading_status ?? 'none';
+      let gradingStatus = gradeRow?.grading_status ?? 'none';
+      if (gradingStatus === 'done') {
+        const stuck = await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM test_attempt_answers
+           WHERE test_attempt_id = ? AND audio_r2_key IS NOT NULL AND audio_r2_key != ''
+             AND (
+               assemblyai_transcript_id IS NULL
+               OR transcript_text LIKE '%ASSEMBLYAI_API_KEY not configured%'
+               OR (ai_mark_json LIKE '%"unanswered"%' AND (transcript_status = 'error' OR transcript_status = 'none' OR transcript_status = 'queued'))
+             )`,
+        )
+          .bind(attemptId)
+          .first<{ n: number }>();
+        if ((stuck?.n ?? 0) > 0) {
+          await env.DB.prepare(`UPDATE test_attempts SET grading_status = 'pending' WHERE id = ?`)
+            .bind(attemptId)
+            .run();
+          gradingStatus = 'pending';
+        }
+      }
       if (gradingStatus === 'pending' || gradingStatus === 'failed') {
         try {
           if (gradingStatus === 'failed') {
@@ -524,7 +551,7 @@ async function submitAttempt(
 
   const scored = await env.DB.prepare(
     `SELECT a.question_code, a.selected_option, a.is_correct,
-            g.canonical_number, p.part_code, p.skill AS part_skill,
+            g.canonical_number, g.cefr_level, p.part_code, p.skill AS part_skill,
             d.key AS dimension_key, d.dimension_code
      FROM test_attempt_answers a
      JOIN question_groups g ON g.id = a.question_group_id
@@ -539,6 +566,7 @@ async function submitAttempt(
       selected_option: string | null;
       is_correct: number | null;
       canonical_number: number;
+      cefr_level: string | null;
       part_code: string;
       part_skill: string | null;
       dimension_key: string | null;
@@ -574,7 +602,7 @@ async function submitAttempt(
     agg.correct += row.is_correct === 1 ? 1 : 0;
     dimAgg.set(row.dimension_key, agg);
   }
-  const dimensions = [...dimAgg.entries()].map(([key, agg]) => ({
+  let dimensions = [...dimAgg.entries()].map(([key, agg]) => ({
     key,
     dimensionCode: agg.dimensionCode,
     partCode: agg.partCode,
@@ -582,13 +610,13 @@ async function submitAttempt(
     max: agg.total,
     levelKey: levelKeyForPct(agg.total > 0 ? agg.correct / agg.total : 0),
   }));
-  const weakDimensionKeys = dimensions
+  let weakDimensionKeys = dimensions
     .filter((dim) => dim.levelKey === 'needsWork' || dim.levelKey === 'developing')
     .map((dim) => dim.key);
 
   // Bands from score_conversion_bands.
   const bandsResult = await env.DB.prepare(
-    'SELECT test_part_id, min_correct, max_correct, band_key, cefr_label, ielts_indicative, toefl_indicative FROM score_conversion_bands WHERE test_id = ? ORDER BY sort_order',
+    'SELECT test_part_id, min_correct, max_correct, band_key, cefr_label, level_label, ielts_indicative, toefl_indicative FROM score_conversion_bands WHERE test_id = ? ORDER BY sort_order',
   )
     .bind(attempt.test_id)
     .all<BandRow>();
@@ -619,27 +647,44 @@ async function submitAttempt(
     })
     .filter((band): band is NonNullable<typeof band> => band !== null);
 
-  // Overall band: overall grid when present (Test 1 model), otherwise average
-  // the part-band levels per the client conversion rule (Test 2 model).
+  // Overall band: Paper I uses its own CEFR ladder (below). Otherwise the overall
+  // grid when present, else average the part-band levels (Test 2 conversion rule).
   let overallBand: { bandKey: string; cefrLabel: string; ielts: string | null; toefl: string | null } | null = null;
-  const overallGrid = findBand(null, overallCorrect);
-  if (overallGrid) {
-    overallBand = {
-      bandKey: overallGrid.band_key,
-      cefrLabel: overallGrid.cefr_label,
-      ielts: overallGrid.ielts_indicative,
-      toefl: overallGrid.toefl_indicative,
-    };
-  } else if (partBands.length > 0) {
-    const levels = partBands.map((band) => BAND_LEVELS[band.bandKey] ?? 1);
-    const avg = levels.reduce((sum, level) => sum + level, 0) / levels.length;
-    // Round half DOWN — the conversion notes ask for a slightly strict mapping.
-    const level = Math.min(5, Math.max(1, Math.ceil(avg - 0.5)));
-    const overall = OVERALL_BANDS[level - 1];
-    overallBand = { bandKey: overall.bandKey, cefrLabel: overall.cefrLabel, ielts: overall.ielts, toefl: overall.toefl };
+  const isPaper1 = testRow?.test_code === '01';
+  if (!isPaper1) {
+    const overallGrid = findBand(null, overallCorrect);
+    if (overallGrid) {
+      overallBand = {
+        bandKey: overallGrid.band_key,
+        cefrLabel: overallGrid.cefr_label,
+        ielts: overallGrid.ielts_indicative,
+        toefl: overallGrid.toefl_indicative,
+      };
+    } else if (partBands.length > 0) {
+      const levels = partBands.map((band) => BAND_LEVELS[band.bandKey] ?? 1);
+      const avg = levels.reduce((sum, level) => sum + level, 0) / levels.length;
+      // Round half DOWN — the conversion notes ask for a slightly strict mapping.
+      const level = Math.min(5, Math.max(1, Math.ceil(avg - 0.5)));
+      const overall = OVERALL_BANDS[level - 1];
+      overallBand = { bandKey: overall.bandKey, cefrLabel: overall.cefrLabel, ielts: overall.ielts, toefl: overall.toefl };
+    }
   }
 
-  // Cohort percentiles vs completed attempts of the same test.
+  let paper1: ReportVariablesV1['paper1'] = undefined;
+  let bands: ReportVariablesV1['bands'] = { overall: overallBand, parts: partBands };
+  if (isPaper1) {
+    const partAId = partIds.get('01') ?? -1;
+    const partBId = partIds.get('02') ?? -1;
+    paper1 = buildPaper1Report(rows, {
+      partA: bandRows.filter((band) => band.test_part_id === partAId),
+      partB: bandRows.filter((band) => band.test_part_id === partBId),
+      overall: bandRows.filter((band) => band.test_part_id === null),
+    });
+    dimensions = paper1Dimensions(paper1);
+    weakDimensionKeys = paper1.partA.growthKeys;
+    bands = paper1Bands(paper1);
+  }
+
   const userRow = attempt
     ? await env.DB.prepare(
         'SELECT u.external_ref, u.display_name, u.user_group, u.education_level FROM test_attempts a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?',
@@ -649,24 +694,6 @@ async function submitAttempt(
     : null;
   const userGroup = userRow?.user_group ?? 'General Learner';
 
-  const allStats = await env.DB.prepare(
-    `SELECT COUNT(*) as cohortSize, AVG(overall_score) as cohortMean,
-            SUM(CASE WHEN overall_score > ? THEN 1 ELSE 0 END) as strictlyAbove
-     FROM test_attempts WHERE test_id = ? AND status = 'completed'`,
-  )
-    .bind(overallCorrect, attempt.test_id)
-    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
-  const groupStats = await env.DB.prepare(
-    `SELECT COUNT(*) as cohortSize, AVG(a.overall_score) as cohortMean,
-            SUM(CASE WHEN a.overall_score > ? THEN 1 ELSE 0 END) as strictlyAbove
-     FROM test_attempts a LEFT JOIN users u ON u.id = a.user_id
-     WHERE a.test_id = ? AND a.status = 'completed' AND u.user_group = ?`,
-  )
-    .bind(overallCorrect, attempt.test_id, userGroup)
-    .first<{ cohortSize: number; cohortMean: number | null; strictlyAbove: number }>();
-
-  // Note: this attempt is not yet 'completed', so stats cover prior attempts;
-  // include self by adding 1 to sizes after completion below.
   const now = Date.now();
 
   const startRow = await env.DB.prepare('SELECT start_time FROM test_attempts WHERE id = ?')
@@ -680,23 +707,8 @@ async function submitAttempt(
     .bind(now, overallCorrect, attemptId)
     .run();
 
-  const all = computePercentileStats({
-    cohortSize: Number(allStats?.cohortSize ?? 0) + 1,
-    cohortMean: allStats?.cohortMean ?? null,
-    strictlyAbove: Number(allStats?.strictlyAbove ?? 0),
-  });
-  const group = computePercentileStats({
-    cohortSize: Number(groupStats?.cohortSize ?? 0) + 1,
-    cohortMean: groupStats?.cohortMean ?? null,
-    strictlyAbove: Number(groupStats?.strictlyAbove ?? 0),
-  });
-
-  const test = await env.DB.prepare('SELECT test_code FROM tests WHERE id = ?')
-    .bind(attempt.test_id)
-    .first<{ test_code: string }>();
-
   const variables: ReportVariablesV1 = {
-    testCode: test?.test_code ?? '',
+    testCode: testRow?.test_code ?? '',
     candidate: {
       name: (body.candidateInfo?.name ?? '').trim() || userRow?.display_name || 'Anonymous Candidate',
       ref: (body.candidateInfo?.id ?? '').trim() || 'N/A',
@@ -715,27 +727,20 @@ async function submitAttempt(
       parts,
     },
     dimensions,
-    bands: {
-      overall: overallBand,
-      parts: partBands,
-    },
+    bands,
     weakDimensionKeys,
-    cohort: {
-      percentileRank: all.percentileRank,
-      cohortRank: all.cohortRank,
-      cohortSize: all.cohortSize,
-      cohortMean: all.cohortMean,
-      groupPercentileRank: group.percentileRank,
-      groupCohortRank: group.cohortRank,
-      groupCohortSize: group.cohortSize,
-      groupCohortMean: group.cohortMean,
-    },
+    paper1,
   };
 
   await env.DB.prepare(
     'INSERT OR REPLACE INTO attempt_reports (test_attempt_id, report_version, variables, created_at) VALUES (?, ?, ?, ?)',
   )
-    .bind(attemptId, REPORT_VARIABLES_VERSION, JSON.stringify(variables), now)
+    .bind(
+      attemptId,
+      isPaper1 ? PAPER1_REPORT_VARIABLES_VERSION : REPORT_VARIABLES_VERSION,
+      JSON.stringify(variables),
+      now,
+    )
     .run();
 
   return json(await buildReportPayload(env, attemptId), undefined, origin);
@@ -769,36 +774,66 @@ async function getAttemptReport(
     return json({ variables: null, review: [], gradingStatus: 'failed', attemptId }, undefined, origin);
   }
 
-  return json(await buildReportPayload(env, attemptId), undefined, origin);
+  const teacherKey = (request.headers.get('X-Teacher-Key') ?? '').trim();
+  return json(await buildReportPayload(env, attemptId, { includeProductions: Boolean(teacherKey) }), undefined, origin);
 }
 
-/** variables + full post-submit review (prompt/options/correct answer are safe once completed). */
-async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
+/**
+ * Student payload: variables plus (Paper I) the feedback rows they reference — never stems,
+ * options, or correct answers.
+ */
+async function buildReportPayload(
+  env: AttemptsEnv,
+  attemptId: string,
+  options: { includeProductions?: boolean } = {},
+) {
   const report = await env.DB.prepare(
     'SELECT report_version, variables FROM attempt_reports WHERE test_attempt_id = ?',
   )
     .bind(attemptId)
     .first<{ report_version: string; variables: string }>();
 
-  // Candidate's actual served sequence; canonical order for pre-display_order attempts.
-  const reviewResult = await env.DB.prepare(
-    `SELECT a.question_code, a.selected_option, a.is_correct, a.display_order,
-            a.text_response, a.audio_r2_key, a.transcript_text, a.ai_mark_json, a.ai_band_key,
-            g.canonical_number, g.response_type, p.part_code, d.key AS dimension_key,
-            q.prompt_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer
+  const gradeRow = await env.DB.prepare('SELECT grading_status, test_id FROM test_attempts WHERE id = ?')
+    .bind(attemptId)
+    .first<{ grading_status: string; test_id: number }>();
+
+  let variables: ReportVariablesV1 | null = null;
+  if (report) {
+    try {
+      variables = JSON.parse(report.variables) as ReportVariablesV1;
+    } catch {
+      variables = null;
+    }
+  }
+  const feedback: Record<string, FeedbackItem> = variables?.paper1
+    ? await loadPaper1Feedback(env.DB, variables.paper1)
+    : {};
+
+  if (!options.includeProductions) {
+    return {
+      variables,
+      feedback,
+      gradingStatus: gradeRow?.grading_status ?? 'none',
+      review: [],
+    };
+  }
+
+  // Teacher Paper III dashboard: recordings / transcripts / essays, never MCQ keys.
+  const productionResult = await env.DB.prepare(
+    `SELECT a.question_code, a.display_order, a.text_response, a.audio_r2_key, a.transcript_text,
+            a.ai_mark_json, a.ai_band_key, g.canonical_number, g.response_type, p.part_code,
+            d.key AS dimension_key
      FROM test_attempt_answers a
      JOIN question_groups g ON g.id = a.question_group_id
      JOIN test_parts p ON p.id = g.test_part_id
-     JOIN questions q ON q.id = a.question_id
      LEFT JOIN dimensions d ON d.id = g.dimension_id
      WHERE a.test_attempt_id = ?
+       AND g.response_type IN ('speaking', 'writing')
      ORDER BY COALESCE(a.display_order, g.canonical_number)`,
   )
     .bind(attemptId)
     .all<{
       question_code: string;
-      selected_option: string | null;
-      is_correct: number | null;
       display_order: number | null;
       text_response: string | null;
       audio_r2_key: string | null;
@@ -809,22 +844,13 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
       response_type: string;
       part_code: string;
       dimension_key: string | null;
-      prompt_text: string;
-      option_a: string;
-      option_b: string;
-      option_c: string;
-      option_d: string;
-      correct_answer: string;
     }>();
 
-  const gradeRow = await env.DB.prepare('SELECT grading_status FROM test_attempts WHERE id = ?')
-    .bind(attemptId)
-    .first<{ grading_status: string }>();
-
   return {
-    variables: report ? (JSON.parse(report.variables) as ReportVariablesV1) : null,
+    variables,
+    feedback,
     gradingStatus: gradeRow?.grading_status ?? 'none',
-    review: (reviewResult.results ?? []).map((row) => {
+    review: (productionResult.results ?? []).map((row) => {
       let aiMark: unknown = null;
       try {
         aiMark = row.ai_mark_json ? JSON.parse(row.ai_mark_json) : null;
@@ -836,13 +862,8 @@ async function buildReportPayload(env: AttemptsEnv, attemptId: string) {
         partCode: row.part_code,
         canonicalNumber: row.canonical_number,
         displayOrder: row.display_order,
-        responseType: row.response_type ?? 'mcq',
+        responseType: row.response_type,
         dimensionKey: row.dimension_key,
-        prompt: row.prompt_text,
-        options: { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d },
-        correctAnswer: row.correct_answer,
-        selectedOption: row.selected_option,
-        isCorrect: row.is_correct,
         textResponse: row.text_response,
         audioUrl: row.audio_r2_key ? `/api/assets/responses/${row.audio_r2_key.replace(/^responses\//, '')}` : null,
         transcriptText: row.transcript_text,

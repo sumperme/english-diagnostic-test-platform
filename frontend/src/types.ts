@@ -1,9 +1,12 @@
-import type { OptionKey, Question } from './data/questions';
-import type { CefrBand } from './data/cefr';
+import type { OptionKey } from './data/questions';
 
 export type Language = 'en' | 'zh-HK';
 
-export type MarketingPage = 'learners' | 'schools' | 'universities' | 'collaboration';
+/** The three audience tabs offered in the marketing nav. */
+export type AudiencePage = 'learners' | 'teachers' | 'universities';
+
+/** Every page rendered by MarketingPageLayout. `about` is footer-only, not a tab. */
+export type MarketingPage = AudiencePage | 'about';
 
 export type Answers = Record<string, OptionKey | undefined>;
 
@@ -41,49 +44,6 @@ export type DimensionScore = {
   score: number;
   level: 1 | 2 | 3 | 4 | 5;
   levelKey: 'needsWork' | 'developing' | 'good' | 'strong' | 'excellent';
-};
-
-export type BackendData = {
-  submissionId: string;
-  attemptId?: string | null;
-  userGroup: string;
-  percentileRank: number | null;
-  cohortRank: number | null;
-  cohortSize: number;
-  cohortMean: number | null;
-  groupPercentileRank: number | null;
-  groupCohortRank: number | null;
-  groupCohortSize: number;
-  groupCohortMean: number | null;
-};
-
-export type ReportResult = {
-  reportVersion: string;
-  candidateInfo: CandidateInfo;
-  submittedAt: number;
-  startedAt: number;
-  durationSec: number;
-  autoSubmitted: boolean;
-  answers: Answers;
-  questions: Question[];
-  scores: {
-    partA: { correct: number; total: number; pct: number };
-    partB: { correct: number; total: number; pct: number };
-    partBVocabI: { correct: number; total: number; pct: number };
-    partBVocabII: { correct: number; total: number; pct: number };
-    total: { correct: number; total: number; pct: number };
-  };
-  dimensions: DimensionScore[];
-  cefrBand: CefrBand;
-  reportSnapshot: {
-    generatedAt: number;
-    weakDimensions: string[];
-    recommendation: string;
-    overallOnlyQids: string[];
-    questionCorrectness: Record<string, 0 | 1>;
-  };
-  backendData?: BackendData;
-  backendError?: boolean;
 };
 
 // --- Attempts API (DB-backed tests, e.g. Paper II) ---
@@ -131,9 +91,73 @@ export type BandRef = {
   toefl: string | null;
 };
 
-export type ReportLevelKey = 'needsWork' | 'developing' | 'good' | 'strong' | 'excellent';
+/** Paper I area label from the score scheme: 0–1 Foundation … 5 Proficient. */
+export type Paper1AreaLabelKey = 'foundation' | 'emerging' | 'approaching' | 'advanced' | 'proficient';
+export type ReportLevelKey = 'needsWork' | 'developing' | 'good' | 'strong' | 'excellent' | Paper1AreaLabelKey;
 
-/** Mirror of the Worker's rv1 report variables (worker/src/reportVariables.ts). */
+export type Paper1VocabLevel = 'B1' | 'B2' | 'C1' | 'C2';
+export type Paper1PlacementLevel = 'A2' | Paper1VocabLevel;
+export type Paper1AdditionalKey = 'uneven' | 'closeToNext' | 'weakerAtTop' | 'even';
+
+/** A row of the Paper I CEFR ladder (A2 or below = 0 … C2 = 7). */
+export type Paper1LadderBand = BandRef & { step: number; levelLabel: string };
+
+export type Paper1Area = {
+  key: string;
+  dimensionCode: string;
+  score: number;
+  max: number;
+  labelKey: Paper1AreaLabelKey;
+  priority: boolean;
+  overviewCode: string;
+  missedQuestionCodes: string[];
+};
+
+export type Paper1PartBLevel = {
+  level: Paper1VocabLevel;
+  correct: number;
+  total: number;
+  threshold: number;
+  met: boolean;
+  percent: number;
+};
+
+/** Mirror of the Worker's rv3 Paper I report (worker/src/reportVariables.ts). */
+export type Paper1Report = {
+  overall: { correct: number; total: number; percent: number; band: Paper1LadderBand };
+  partA: {
+    correct: number;
+    total: number;
+    band: Paper1LadderBand;
+    areas: Paper1Area[];
+    strengthKeys: string[];
+    growthKeys: string[];
+    concludingCode: string;
+  };
+  partB: {
+    correct: number;
+    total: number;
+    /** Counts are scoring inputs only — reports show the percentages. */
+    levels: Paper1PartBLevel[];
+    placement: Paper1PlacementLevel;
+    band: Paper1LadderBand;
+    placementCode: string;
+    additional: { key: Paper1AdditionalKey; code: string; level: Paper1PlacementLevel | null } | null;
+    roadmapCode: string;
+  };
+};
+
+/** feedback_items row resolved by the report payload. */
+export type FeedbackItem = {
+  code: string;
+  kind: string;
+  typeRef: string | null;
+  heading: string | null;
+  body: string;
+  fields: unknown;
+};
+
+/** Mirror of the Worker's report variables (worker/src/reportVariables.ts). */
 export type ReportVariables = {
   testCode: string;
   candidate: {
@@ -166,16 +190,8 @@ export type ReportVariables = {
     parts: Array<BandRef & { partCode: string }>;
   };
   weakDimensionKeys: string[];
-  cohort: {
-    percentileRank: number | null;
-    cohortRank: number | null;
-    cohortSize: number;
-    cohortMean: number | null;
-    groupPercentileRank: number | null;
-    groupCohortRank: number | null;
-    groupCohortSize: number;
-    groupCohortMean: number | null;
-  } | null;
+  /** Paper I rv3 only. */
+  paper1?: Paper1Report;
 };
 
 export type AttemptReviewRow = {
@@ -184,11 +200,11 @@ export type AttemptReviewRow = {
   canonicalNumber: number;
   /** 1-based served position; null for attempts predating randomization. */
   displayOrder: number | null;
-  prompt: string;
-  options: AttemptOptions;
-  correctAnswer: string;
-  selectedOption: string | null;
-  isCorrect: number | null;
+  prompt?: string;
+  options?: AttemptOptions;
+  correctAnswer?: string;
+  selectedOption?: string | null;
+  isCorrect?: number | null;
   responseType?: string;
   dimensionKey?: string | null;
   textResponse?: string | null;
@@ -208,6 +224,8 @@ export type AttemptReviewRow = {
 
 export type AttemptReportPayload = {
   variables: ReportVariables | null;
+  /** Paper I feedback_items rows keyed by feedback code. */
+  feedback?: Record<string, FeedbackItem>;
   review: AttemptReviewRow[];
   gradingStatus?: string;
   attemptId?: string;
@@ -216,7 +234,7 @@ export type AttemptReportPayload = {
 
 // --- AI feedback (DeepSeek) ---
 
-export type AiFeedback = { en: string; zhHK: string };
+export type AiFeedback = { en: string };
 
 export type AiFeedbackStatus = 'none' | 'pending' | 'done' | 'failed';
 
@@ -306,11 +324,17 @@ export type TeacherSession = {
 
 export type TeacherSubmissionRow = {
   submissionId: string;
+  attemptId?: string | null;
   submittedAt: number;
   candidateName: string;
   candidateId: string;
   testDate: number;
   totalScore: number;
+  partAScore?: number | null;
+  partATotal?: number | null;
+  partBScore?: number | null;
+  partBTotal?: number | null;
+  overallPercent?: number | null;
   cefr: string;
   cefrLabel: string;
   weakDimensions: string[];
@@ -356,6 +380,7 @@ export type TeacherDashboardData = {
   overallMean: number | null;
   overallMedian: number | null;
   overallStdDev: number | null;
+  partBMean?: number | null;
   scoreBuckets: { label: string; min: number; max: number; count: number }[];
   dimensionStats: TeacherDimensionStat[];
   submissions: TeacherSubmissionRow[];

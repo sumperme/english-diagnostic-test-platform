@@ -26,7 +26,10 @@ bucket_name = "edt-assets"
 [vars]
 ALLOWED_ORIGIN = "https://eng-diagnostic.tzy667.workers.dev"
 SESSION_TTL_SECONDS = "7200"
-ADMIN_PASSWORD = "EDT-Aa2026!"
+# ADMIN_PASSWORD is a SECRET — never add it here. Set it once per environment with
+#   npx wrangler secret put ADMIN_PASSWORD
+# and keep the local value in worker/.dev.vars (gitignored). Admin routes return
+# 503 when it is unset, so a missing secret fails closed instead of opening access.
 
 [[queues.producers]]
 binding = "PAPER3_GRADE"

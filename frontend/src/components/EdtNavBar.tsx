@@ -1,9 +1,11 @@
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { PrimaryCTA } from './PrimaryCTA';
 import { useLocale } from '../i18n/LocaleContext';
-import type { MarketingPage } from '../types';
+import { AUDIENCE_PAGES } from '../lib/marketingPages';
+import type { AudiencePage, MarketingPage } from '../types';
 
-const MARKETING_PAGES: MarketingPage[] = ['learners', 'schools', 'universities', 'collaboration'];
+/** Marketing heroes sit under a taller nav while the audience tabs wrap onto a second row. */
+export const marketingHeroOffsetClass = '-mt-nav-marketing pt-nav-marketing lg:-mt-nav lg:pt-nav';
 
 type EdtNavBarProps = {
   variant: 'marketing' | 'app';
@@ -29,20 +31,37 @@ export function EdtNavBar({
   const logoClass =
     'font-display text-3xl font-bold tracking-[0.12em] text-edt-neon transition-colors hover:text-edt-soft';
 
-  const navLabel = (page: MarketingPage) => {
-    const labels: Record<MarketingPage, string> = {
+  const navLabel = (page: AudiencePage) => {
+    const labels: Record<AudiencePage, string> = {
       learners: t.nav.learners,
-      schools: t.nav.schools,
+      teachers: t.nav.teachers,
       universities: t.nav.universities,
-      collaboration: t.nav.collaboration,
     };
     return labels[page];
   };
 
+  const audienceTabs = (className: string) => (
+    <div className={className}>
+      {AUDIENCE_PAGES.map((page) => (
+        <button
+          key={page}
+          type="button"
+          onClick={() => onNavigate?.(page)}
+          className={`text-xs font-normal uppercase tracking-[0.14em] transition-colors ${
+            activePage === page ? 'text-edt-neon' : 'text-edt-soft hover:text-edt-neon'
+          }`}
+        >
+          {navLabel(page)}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <>
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-[rgba(130,129,109,0.2)] bg-[rgba(27,45,42,0.95)] py-4 backdrop-blur-md">
-      <div className="mx-auto flex max-w-content items-center justify-between gap-6 px-6 md:px-10">
+      <div className="mx-auto max-w-content px-6 md:px-10">
+      <div className="flex items-center justify-between gap-6">
         <div className="flex min-w-0 flex-1 items-center gap-6 lg:gap-10">
           {onLogoClick ? (
             <button type="button" onClick={onLogoClick} className={`flex-shrink-0 ${logoClass}`}>
@@ -64,22 +83,7 @@ export function EdtNavBar({
             </button>
           ) : null}
 
-          {variant === 'marketing' ? (
-            <div className="hidden min-w-0 gap-6 lg:flex">
-              {MARKETING_PAGES.map((page) => (
-                <button
-                  key={page}
-                  type="button"
-                  onClick={() => onNavigate?.(page)}
-                  className={`text-xs font-normal uppercase tracking-[0.14em] transition-colors ${
-                    activePage === page ? 'text-edt-neon' : 'text-edt-soft hover:text-edt-neon'
-                  }`}
-                >
-                  {navLabel(page)}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          {variant === 'marketing' ? audienceTabs('hidden min-w-0 gap-6 lg:flex') : null}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-4">
@@ -91,8 +95,10 @@ export function EdtNavBar({
           ) : null}
         </div>
       </div>
+      {variant === 'marketing' ? audienceTabs('mt-3 flex flex-wrap gap-x-5 gap-y-2 lg:hidden') : null}
+      </div>
     </nav>
-    <div className="h-nav shrink-0" aria-hidden="true" />
+    <div className={variant === 'marketing' ? 'h-nav-marketing shrink-0 lg:h-nav' : 'h-nav shrink-0'} aria-hidden="true" />
     </>
   );
 }
