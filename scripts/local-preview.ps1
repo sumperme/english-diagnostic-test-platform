@@ -2,13 +2,13 @@
 # R2 assets (listening audio + speaking prompts + PDF fonts), start Worker + Vite.
 #
 # What it prepares (all local; production is untouched):
-#   - D1 migrations through 0020: legacy tables + unified test bank (tests,
+#   - D1 migrations through 0021: legacy tables + unified test bank (tests,
 #     question_groups, questions, shared_resources, score_conversion_bands),
 #     attempts tables (users, test_attempts, test_attempt_answers,
 #     attempt_reports, pdf_cache_index), voucher_test_usage, Paper III
 #     schema/seed/activate (0014–0016) + prompt copy (0018–0019), and the
 #     Oct 2026 Paper I bank + preset feedback hard-replace (0020; wipes local
-#     Paper I attempts).
+#     Paper I attempts) + feedback italics/word-list links (0021).
 #   - R2 simulation for worker/wrangler.toml: 21 Paper II MP3s (20 clips +
 #     sound-check track) + 7 Paper III speaking prompts + Recording_Start_Sound_3Sec
 #     / Recording_Stop beeps + PDF fonts (required by /api/assets/audio/* and report PDF).
@@ -231,7 +231,7 @@ Ensure-Paper3DevSecrets
 Write-Host "Local STT uses Queue polling (AssemblyAI cannot reach localhost)." -ForegroundColor DarkGray
 Write-Host "Webhooks apply only when ASSEMBLYAI_WEBHOOK_BASE is set on a public deploy." -ForegroundColor DarkGray
 
-Write-Step "Applying local D1 migrations (schema + Papers I–III through 0020)..."
+Write-Step "Applying local D1 migrations (schema + Papers I–III through 0021)..."
 & (Get-NpxInvoker) wrangler d1 migrations apply edt-diagnostic --local -c $WorkerConfig
 if ($LASTEXITCODE -ne 0) {
     throw "Local D1 migration failed."

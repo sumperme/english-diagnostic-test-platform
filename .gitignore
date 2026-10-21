@@ -23,6 +23,7 @@ scripts/*
 !scripts/docx-text.mjs
 !scripts/test-paper1-report.ts
 .fonts-cache/
+demo-reports/
 .cursor/
 Client_Feedback/
 tmp_analysis/

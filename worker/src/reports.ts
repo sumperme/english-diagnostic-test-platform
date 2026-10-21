@@ -16,8 +16,9 @@
 // Cache: latest 20 PDFs kept in R2 under pdf-cache/, indexed in D1 pdf_cache_index,
 // evicted first-come-first-leave by created_at (insertion order, not last access).
 
-import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, PDFPage, PDFString, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { type InlineSpan, parseInline, serializeInline } from './inlineMarkup';
 import { REPORT_STRINGS, formatPaper1Level } from './reportI18n';
 import type { FeedbackItem, Paper1Area, Paper1Report, ReportDimension, ReportVariablesV1 } from './reportVariables';
 import {
@@ -132,7 +133,7 @@ export async function handleReportRequest(
   // ai_generated_at busts the cache so PDFs downloaded after generation include
   // the feedback instead of serving the stale pre-feedback copy.
   // pdfLayout bumps whenever the rendered layout changes.
-  const pdfLayout = 9;
+  const pdfLayout = 10;
   const cacheKey = `${attemptId}:${report.report_version}:ai${report.ai_generated_at ?? 0}:L${pdfLayout}`;
 
   // Cache hit: stream straight from R2.
@@ -230,16 +231,35 @@ function reportPdfFilename(voucherCode: string | null, testCode: string, attempt
 
 const CJK_RE = /[\u3000-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/;
 
-type Fonts = { body: PDFFont; bold: PDFFont; cjk: PDFFont | null };
+type Fonts = {
+  body: PDFFont;
+  bold: PDFFont;
+  italic: PDFFont;
+  boldItalic: PDFFont;
+  cjk: PDFFont | null;
+};
 type Color = ReturnType<typeof rgb>;
-type TextStyle = { size: number; bold?: boolean; color?: Color; lineGap?: number };
+/** `rich` styles parse feedback_items markup (*italic*, [text](url)); use them for feedback copy only. */
+type TextStyle = { size: number; bold?: boolean; color?: Color; lineGap?: number; rich?: boolean };
 
 const BODY: TextStyle = { size: 9, color: INK, lineGap: 3.5 };
+const RICH_BODY: TextStyle = { ...BODY, rich: true };
 const SMALL_NOTE: TextStyle = { size: 7.5, color: OLIVE, lineGap: 3 };
+const LINK = rgb(65 / 255, 64 / 255, 102 / 255);
 
 async function loadFont(env: ReportsEnv, doc: PDFDocument, key: string): Promise<PDFFont> {
   const object = await env.R2_ASSETS.get(key);
   if (!object) throw new Error(`Font asset missing in R2: ${key}`);
+  return doc.embedFont(await object.arrayBuffer(), { subset: true });
+}
+
+/** Italic faces are optional: without them in R2 the PDF still renders, upright. */
+async function loadOptionalFont(env: ReportsEnv, doc: PDFDocument, key: string, fallback: PDFFont): Promise<PDFFont> {
+  const object = await env.R2_ASSETS.get(key);
+  if (!object) {
+    console.warn(`Font asset missing in R2: ${key}; using the upright face`);
+    return fallback;
+  }
   return doc.embedFont(await object.arrayBuffer(), { subset: true });
 }
 
@@ -277,13 +297,65 @@ class PdfWriter {
     this.y -= height;
   }
 
-  font(text: string, bold = false): PDFFont {
+  font(text: string, bold = false, italic = false): PDFFont {
     if (CJK_RE.test(text) && this.fonts.cjk) return this.fonts.cjk;
+    if (italic) return bold ? this.fonts.boldItalic : this.fonts.italic;
     return bold ? this.fonts.bold : this.fonts.body;
   }
 
+  private spanWidth(span: InlineSpan, style: TextStyle): number {
+    return this.font(span.text, style.bold, span.italic).widthOfTextAtSize(span.text, style.size);
+  }
+
   widthOf(text: string, style: TextStyle): number {
+    if (style.rich) return parseInline(text).reduce((sum, span) => sum + this.spanWidth(span, style), 0);
     return this.font(text, style.bold).widthOfTextAtSize(text, style.size);
+  }
+
+  /**
+   * Word-wraps one markup paragraph. Each output line is balanced markup on its own, so an
+   * italic phrase or a link that wraps is closed at the line end and reopened on the next.
+   */
+  private richLines(block: string, style: TextStyle, width: number, firstLineWidth: number): string[] {
+    const words: InlineSpan[][] = [];
+    let word: InlineSpan[] = [];
+    for (const span of parseInline(block)) {
+      for (const part of span.text.split(/(\s+)/)) {
+        if (!part) continue;
+        if (/^\s+$/.test(part)) {
+          if (word.length) words.push(word);
+          word = [];
+        } else {
+          word.push({ ...span, text: part });
+        }
+      }
+    }
+    if (word.length) words.push(word);
+
+    const space = (before: InlineSpan, after: InlineSpan): InlineSpan =>
+      before.italic === after.italic && before.href === after.href
+        ? { ...before, text: ' ' }
+        : { text: ' ', italic: false };
+    const wordWidth = (pieces: InlineSpan[]) => pieces.reduce((sum, piece) => sum + this.spanWidth(piece, style), 0);
+    const out: string[] = [];
+    let line: InlineSpan[] = [];
+    let lineWidth = 0;
+    for (const pieces of words) {
+      const limit = out.length === 0 ? firstLineWidth : width;
+      const joint = line.length ? space(line[line.length - 1], pieces[0]) : null;
+      const added = (joint ? this.spanWidth(joint, style) : 0) + wordWidth(pieces);
+      if (line.length && lineWidth + added > limit) {
+        out.push(serializeInline(line));
+        line = [...pieces];
+        lineWidth = wordWidth(pieces);
+      } else {
+        if (joint) line.push(joint);
+        line.push(...pieces);
+        lineWidth += added;
+      }
+    }
+    if (line.length) out.push(serializeInline(line));
+    return out;
   }
 
   lineStep(style: TextStyle): number {
@@ -303,6 +375,10 @@ class PdfWriter {
       const trimmed = block.trim();
       if (!trimmed) {
         if (out.length > 0) out.push('');
+        continue;
+      }
+      if (style.rich) {
+        out.push(...this.richLines(trimmed, style, width, out.length === 0 ? width - firstIndent : width));
         continue;
       }
       const font = this.font(trimmed, style.bold);
@@ -336,6 +412,10 @@ class PdfWriter {
   textAt(value: string, x: number, top: number, style: TextStyle) {
     const safe = value.replace(/[\r\n]+/g, ' ').trimEnd();
     if (!safe) return;
+    if (style.rich) {
+      this.richTextAt(safe, x, top, style);
+      return;
+    }
     this.page.drawText(safe, {
       x,
       y: top - style.size * 0.8,
@@ -343,6 +423,42 @@ class PdfWriter {
       font: this.font(safe, style.bold),
       color: style.color ?? INK,
     });
+  }
+
+  /** One markup line: italic spans in the italic face, links underlined and clickable. */
+  private richTextAt(value: string, x: number, top: number, style: TextStyle) {
+    const baseline = top - style.size * 0.8;
+    let cursor = x;
+    for (const span of parseInline(value)) {
+      const font = this.font(span.text, style.bold, span.italic);
+      const width = font.widthOfTextAtSize(span.text, style.size);
+      const color = span.href ? LINK : (style.color ?? INK);
+      this.page.drawText(span.text, { x: cursor, y: baseline, size: style.size, font, color });
+      if (span.href) {
+        this.page.drawLine({
+          start: { x: cursor, y: baseline - 1.2 },
+          end: { x: cursor + width, y: baseline - 1.2 },
+          thickness: 0.5,
+          color: LINK,
+        });
+        this.linkAnnotation(span.href, cursor, baseline - 2.5, cursor + width, baseline + style.size * 0.85);
+      }
+      cursor += width;
+    }
+  }
+
+  private linkAnnotation(url: string, x1: number, y1: number, x2: number, y2: number) {
+    const context = this.doc.context;
+    const annotation = context.register(
+      context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: [x1, y1, x2, y2],
+        Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+      }),
+    );
+    this.page.node.addAnnot(annotation);
   }
 
   textRight(value: string, right: number, top: number, style: TextStyle) {
@@ -374,7 +490,7 @@ class PdfWriter {
   /** "Label: text" with a bold inline label; page breaks fall between lines. */
   labelledParagraph(label: string, value: string, style: TextStyle = BODY, x = MARGIN, width = PAGE_W - MARGIN - x) {
     const labelText = `${label} `;
-    const labelStyle = { ...style, bold: true, color: FOREST };
+    const labelStyle = { ...style, bold: true, color: FOREST, rich: false };
     const indent = this.widthOf(labelText, labelStyle);
     const lines = this.lines(value, style, width, indent);
     const step = this.lineStep(style);
@@ -558,9 +674,13 @@ async function renderReportPdf(
   // Noto Serif TC ships as a TrueType-outline variable font: fontkit can subset it
   // (its CFF/OTF subsetter cannot handle the CJK OTFs), keeping PDFs small.
   const needsCjk = CJK_RE.test(vars.candidate.name);
+  const body = await loadFont(env, doc, 'fonts/Montserrat-Regular.ttf');
+  const bold = await loadFont(env, doc, 'fonts/Montserrat-SemiBold.ttf');
   const fonts: Fonts = {
-    body: await loadFont(env, doc, 'fonts/Montserrat-Regular.ttf'),
-    bold: await loadFont(env, doc, 'fonts/Montserrat-SemiBold.ttf'),
+    body,
+    bold,
+    italic: await loadOptionalFont(env, doc, 'fonts/Montserrat-Italic.ttf', body),
+    boldItalic: await loadOptionalFont(env, doc, 'fonts/Montserrat-SemiBoldItalic.ttf', bold),
     cjk: needsCjk ? await loadFont(env, doc, 'fonts/NotoSerifTC-Regular.ttf') : null,
   };
 
@@ -824,7 +944,7 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
   if (strengths.length === 0) {
     w.paragraph(strings.none);
   } else {
-    w.paragraph(fillTemplate(body(PAPER1_TEMPLATE_CODES.strengthsIntro), { n: strengths.length }));
+    w.paragraph(fillTemplate(body(PAPER1_TEMPLATE_CODES.strengthsIntro), { n: strengths.length }), RICH_BODY);
     w.gap(8);
     drawStrengthCards(
       w,
@@ -834,7 +954,7 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
         body: body(area.overviewCode),
       })),
     );
-    w.paragraph(body(PAPER1_TEMPLATE_CODES.strengthsClosing));
+    w.paragraph(body(PAPER1_TEMPLATE_CODES.strengthsClosing), RICH_BODY);
   }
 
   // --- Growth roadmap ---
@@ -844,18 +964,18 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
   if (growth.length === 0) {
     w.paragraph(strings.none);
   } else {
-    w.paragraph(fillTemplate(body(PAPER1_TEMPLATE_CODES.roadmapIntro), { n: growth.length }));
+    w.paragraph(fillTemplate(body(PAPER1_TEMPLATE_CODES.roadmapIntro), { n: growth.length }), RICH_BODY);
     for (const area of growth) {
       const headingStyle: TextStyle = { size: 11, bold: true, color: FOREST, lineGap: 3 };
       const headingLines = w.lines(areaTitle(area), headingStyle, CONTENT_W);
-      const overviewLines = w.lines(body(area.overviewCode), BODY, CONTENT_W);
+      const overviewLines = w.lines(body(area.overviewCode), RICH_BODY, CONTENT_W);
       // Keep the heading with its score line, the overview label and the first overview lines.
-      w.ensure(10 + w.heightOf(headingLines, headingStyle) + 16 + 14 + w.heightOf(overviewLines.slice(0, 3), BODY));
+      w.ensure(10 + w.heightOf(headingLines, headingStyle) + 16 + 14 + w.heightOf(overviewLines.slice(0, 3), RICH_BODY));
       w.gap(10);
       w.y -= w.linesAt(headingLines, MARGIN, w.y, headingStyle);
       w.textAt(`${p.scoreLabel}: ${area.score}/${area.max} - ${areaLabel(area)}`, MARGIN, w.y, { size: 9, bold: true, color: GOLD });
       w.gap(16);
-      w.labelledParagraph(`${p.areaOverview}:`, body(area.overviewCode));
+      w.labelledParagraph(`${p.areaOverview}:`, body(area.overviewCode), RICH_BODY);
       w.gap(6);
       for (const point of paper1GrammarPoints(area, feedback)) drawGrammarPoint(w, point, p.grammarPoint);
     }
@@ -868,17 +988,17 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
     subHeading(w, p.concludingTitle, 50);
     const fields = (concluding.fields ?? {}) as ConcludingFields;
     if (fields.intro || fields.steps?.length || fields.closing) {
-      if (fields.intro) w.paragraph(fields.intro);
+      if (fields.intro) w.paragraph(fields.intro, RICH_BODY);
       for (const step of fields.steps ?? []) {
         w.gap(3);
-        w.labelledParagraph(`${step.label}:`, step.text, BODY, MARGIN + 12);
+        w.labelledParagraph(`${step.label}:`, step.text, RICH_BODY, MARGIN + 12);
       }
       if (fields.closing) {
         w.gap(5);
-        w.paragraph(fields.closing);
+        w.paragraph(fields.closing, RICH_BODY);
       }
     } else {
-      w.paragraph(concluding.body);
+      w.paragraph(concluding.body, RICH_BODY);
     }
   }
 
@@ -904,7 +1024,7 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
   const additional = partB.additional
     ? fillTemplate(body(partB.additional.code), { level: partB.additional.level })
     : '';
-  w.paragraph([body(partB.placementCode), additional].filter(Boolean).join(' '));
+  w.paragraph([body(partB.placementCode), additional].filter(Boolean).join(' '), RICH_BODY);
 
   const roadmap = feedback[partB.roadmapCode];
   if (roadmap) {
@@ -912,7 +1032,7 @@ function renderPaper1(w: PdfWriter, vars: ReportVariablesV1, report: Paper1Repor
     subHeading(w, p.partBRoadmap);
     const bullets = (roadmap.fields as { bullets?: unknown } | null)?.bullets;
     const items = Array.isArray(bullets) ? bullets.map(String) : roadmap.body.split('\n');
-    bulletList(w, items.map((item) => item.trim()).filter(Boolean));
+    bulletList(w, items.map((item) => item.trim()).filter(Boolean), RICH_BODY);
   }
 }
 
@@ -943,7 +1063,7 @@ function drawStrengthCards(w: PdfWriter, cards: StrengthCard[]) {
   const innerW = colW - pad * 2 - 3;
   const titleStyle: TextStyle = { size: 9.5, bold: true, color: FOREST, lineGap: 3 };
   const metaStyle: TextStyle = { size: 8.5, bold: true, color: GOLD, lineGap: 3 };
-  const bodyStyle: TextStyle = { size: 8.5, color: INK, lineGap: 3.2 };
+  const bodyStyle: TextStyle = { size: 8.5, color: INK, lineGap: 3.2, rich: true };
 
   const measured = cards.map((card) => {
     const title = w.lines(card.title, titleStyle, innerW);
@@ -981,9 +1101,9 @@ function drawGrammarPoint(w: PdfWriter, item: FeedbackItem, tag: string) {
   const textX = MARGIN + pad + labelW + 8;
   const textW = PAGE_W - MARGIN - pad - textX;
   const tagStyle: TextStyle = { size: 6.5, bold: true, color: NEON };
-  const headStyle: TextStyle = { size: 9.5, bold: true, color: SOFT, lineGap: 3 };
+  const headStyle: TextStyle = { size: 9.5, bold: true, color: SOFT, lineGap: 3, rich: true };
   const labelStyle: TextStyle = { size: 7.5, bold: true, color: OLIVE, lineGap: 3.5 };
-  const textStyle: TextStyle = { size: 8.5, color: INK, lineGap: 3.5 };
+  const textStyle: TextStyle = { size: 8.5, color: INK, lineGap: 3.5, rich: true };
 
   const headLines = w.lines(item.heading ?? '', headStyle, CONTENT_W - pad * 2);
   const headerH = pad + 11 + w.heightOf(headLines, headStyle) + pad - 3;

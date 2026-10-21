@@ -13,7 +13,18 @@
 
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { docxParagraphs, docxTables } from './docx-text.mjs';
+import { docxParagraphs as readParagraphs, docxTables as readTables } from './docx-text.mjs';
+
+// collectFeedback({ markup: true }) keeps italics (*text*) and hyperlinks ([text](url)).
+let readOptions = {};
+const docxParagraphs = (file) => readParagraphs(file, readOptions);
+const docxTables = (file) => readTables(file, readOptions);
+
+/** Inline markup removed: the text exactly as the plain extraction sees it. */
+export const stripMarkup = (text) =>
+  String(text ?? '')
+    .replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, '$1')
+    .replace(/\*/g, '');
 
 const ROOT = join(import.meta.dirname, '..');
 const PACK = join(ROOT, 'Client_Feedback', 'Updated Paper 1 information-Oct2026');
@@ -320,7 +331,8 @@ function parseScheme(anomalies) {
 
 // ---------------------------------------------------------------------------
 
-export function collectFeedback() {
+export function collectFeedback({ markup = false } = {}) {
+  readOptions = { markup };
   const anomalies = [];
   const areas = [];
   for (let area = 1; area <= 12; area += 1) areas.push(parseMicroFeedback(area, anomalies));

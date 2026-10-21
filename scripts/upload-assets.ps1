@@ -238,6 +238,9 @@ New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
 $fonts = @(
     @{ Key = 'fonts/Montserrat-Regular.ttf';  Url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Regular.ttf' },
     @{ Key = 'fonts/Montserrat-SemiBold.ttf'; Url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBold.ttf' },
+    # Italics in Paper I feedback (*…* markup in feedback_items).
+    @{ Key = 'fonts/Montserrat-Italic.ttf';   Url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Italic.ttf' },
+    @{ Key = 'fonts/Montserrat-SemiBoldItalic.ttf'; Url = 'https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBoldItalic.ttf' },
     # TrueType-outline variable font: fontkit can subset it at PDF render time
     # (its CFF subsetter cannot encode the Noto CJK OTFs), keeping report PDFs small.
     @{ Key = 'fonts/NotoSerifTC-Regular.ttf'; Url = 'https://github.com/google/fonts/raw/main/ofl/notoseriftc/NotoSerifTC%5Bwght%5D.ttf' }

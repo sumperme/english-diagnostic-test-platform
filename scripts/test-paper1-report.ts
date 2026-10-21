@@ -22,6 +22,7 @@ import {
   type Paper1ScoredRow,
 } from '../worker/src/paper1Report.ts';
 import { formatPaper1Level } from '../worker/src/reportI18n.ts';
+import { parseInline, serializeInline, stripInline } from '../worker/src/inlineMarkup.ts';
 import type { FeedbackItem, Paper1Area } from '../worker/src/reportVariables.ts';
 
 let failed = 0;
@@ -248,6 +249,41 @@ eq(formatPaper1Level(mixed.overall.band), 'B1/B2 (Intermediate / Upper Intermedi
 eq(fillTemplate('in the following {n} grammar {areas}:', { n: 1 }), 'in the following 1 grammar area:', '{n} {areas} singular');
 eq(fillTemplate('in the following {n} grammar {areas}:', { n: 8 }), 'in the following 8 grammar areas:', '{n} {areas} plural');
 eq(fillTemplate('secure up to [level];', { level: 'B2' }), 'secure up to B2;', '[level] placeholder');
+
+// --- feedback_items inline markup (0021) ---
+const oxford = 'https://www.oxfordlearnersdictionaries.com/wordlist/american_english/oxford3000/';
+eq(
+  parseInline(`Learn (for example, [the Oxford 3000](${oxford})), and *decide*.`),
+  [
+    { text: 'Learn (for example, ', italic: false },
+    { text: 'the Oxford 3000', italic: false, href: oxford },
+    { text: '), and ', italic: false },
+    { text: 'decide', italic: true },
+    { text: '.', italic: false },
+  ],
+  'parseInline: link and italic spans',
+);
+eq(stripInline('Only after [clause] + *Auxiliary (did)*'), 'Only after [clause] + Auxiliary (did)', 'bracketed text without a URL stays literal');
+eq(stripInline('a lone * star'), 'a lone * star', 'unpaired asterisk stays literal');
+eq(stripInline('[evil](javascript:alert(1))'), '[evil](javascript:alert(1))', 'non-http links are not links');
+eq(
+  serializeInline(parseInline(`*will have been* + *-ing* and [the Oxford 5000](${oxford})`)),
+  `*will have been* + *-ing* and [the Oxford 5000](${oxford})`,
+  'serializeInline round-trips',
+);
+{
+  const migration = readFileSync(fileURLToPath(new URL('../migrations/0021_paper1_feedback_formatting.sql', import.meta.url)), 'utf8');
+  const links = [...new Set([...migration.matchAll(/\]\((https:\/\/[^)\s]+)\)/g)].map((m) => m[1]))].sort();
+  eq(
+    links,
+    [
+      'https://www.oxfordlearnersdictionaries.com/wordlist/american_english/academic/',
+      'https://www.oxfordlearnersdictionaries.com/wordlist/american_english/oxford3000/',
+      'https://www.oxfordlearnersdictionaries.com/wordlists/oxford3000-5000',
+    ],
+    '0021 carries exactly the three Part B word-list links',
+  );
+}
 
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);

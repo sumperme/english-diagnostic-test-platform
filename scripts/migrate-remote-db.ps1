@@ -2,9 +2,10 @@
 #
 # What it does, in order:
 #   1. Exports a full backup to db_backup/edt-diagnostic-<timestamp>.sql
-#   2. Applies pending migrations (through 0020: unified test bank, Papers I–III
+#   2. Applies pending migrations (through 0021: unified test bank, Papers I–III
 #      content, voucher_test_usage, AI feedback, Paper III schema/seed/activate,
-#      Oct 2026 Paper I bank + feedback_items hard-replace). Migration 0020
+#      Oct 2026 Paper I bank + feedback_items hard-replace, then 0021 feedback
+#      italics/links, which is non-destructive). Migration 0020
 #      DELETES live Paper I attempts, answers, reports, PDF cache rows, class
 #      overviews, and submissions even with -SkipCleanse, and drops
 #      attempt_reports.ai_feedback_zh. Backup first.

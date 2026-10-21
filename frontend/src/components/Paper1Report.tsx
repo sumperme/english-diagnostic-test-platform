@@ -17,6 +17,7 @@ import {
 import type { FeedbackItem, Paper1Area, Paper1Report, ReportVariables } from '../types';
 import { MasteryBar } from './MasteryBar';
 import { RadarChart } from './RadarChart';
+import { RichText } from './RichText';
 
 const r = REPORT_MESSAGES;
 const p = REPORT_MESSAGES.paper1;
@@ -183,7 +184,9 @@ export function Paper1Strengths({ report, feedback }: { report: Paper1Report; fe
         <Paragraph>{r.none}</Paragraph>
       ) : (
         <div className="space-y-4">
-          <Paragraph>{fillTemplate(bodyOf(feedback, PAPER1_TEMPLATE_CODES.strengthsIntro), { n: strengths.length })}</Paragraph>
+          <Paragraph>
+            <RichText text={fillTemplate(bodyOf(feedback, PAPER1_TEMPLATE_CODES.strengthsIntro), { n: strengths.length })} />
+          </Paragraph>
           <div className="grid gap-4 lg:grid-cols-2">
             {strengths.map((area) => (
               <article
@@ -194,11 +197,15 @@ export function Paper1Strengths({ report, feedback }: { report: Paper1Report; fe
                 <p className="mt-0.5 text-xs font-semibold text-edt-gold">
                   ({area.score}/{area.max} - {areaLabel(area)})
                 </p>
-                <p className="mt-2 break-words text-sm leading-relaxed text-slate-700">{bodyOf(feedback, area.overviewCode)}</p>
+                <p className="mt-2 break-words text-sm leading-relaxed text-slate-700">
+                  <RichText text={bodyOf(feedback, area.overviewCode)} />
+                </p>
               </article>
             ))}
           </div>
-          <Paragraph>{bodyOf(feedback, PAPER1_TEMPLATE_CODES.strengthsClosing)}</Paragraph>
+          <Paragraph>
+            <RichText text={bodyOf(feedback, PAPER1_TEMPLATE_CODES.strengthsClosing)} />
+          </Paragraph>
         </div>
       )}
     </Card>
@@ -210,13 +217,17 @@ function GrammarPointCard({ item }: { item: FeedbackItem }) {
     <article className="overflow-hidden rounded-xl border border-edt-gold/40 print:break-inside-avoid">
       <header className="bg-edt-forest px-4 py-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-edt-neon">{p.grammarPoint}</p>
-        <h5 className="mt-0.5 break-words text-sm font-semibold text-edt-soft">{item.heading}</h5>
+        <h5 className="mt-0.5 break-words text-sm font-semibold text-edt-soft">
+          <RichText text={item.heading ?? ''} />
+        </h5>
       </header>
       <dl className="divide-y divide-slate-100 px-4">
         {grammarFields(item).map((field, index) => (
           <div key={`${field.label}-${index}`} className="grid gap-1 py-2.5 sm:grid-cols-[8rem_1fr] sm:gap-4">
             <dt className="text-xs font-semibold uppercase tracking-wide text-edt-olive">{field.label}</dt>
-            <dd className="break-words text-sm leading-relaxed text-slate-700">{field.text}</dd>
+            <dd className="break-words text-sm leading-relaxed text-slate-700">
+              <RichText text={field.text} />
+            </dd>
           </div>
         ))}
       </dl>
@@ -233,7 +244,9 @@ export function Paper1GrowthRoadmap({ report, feedback }: { report: Paper1Report
         <Paragraph>{r.none}</Paragraph>
       ) : (
         <div className="space-y-8">
-          <Paragraph>{fillTemplate(bodyOf(feedback, PAPER1_TEMPLATE_CODES.roadmapIntro), { n: growth.length })}</Paragraph>
+          <Paragraph>
+            <RichText text={fillTemplate(bodyOf(feedback, PAPER1_TEMPLATE_CODES.roadmapIntro), { n: growth.length })} />
+          </Paragraph>
           {growth.map((area) => (
             <div key={area.key} className="space-y-3">
               <div>
@@ -244,7 +257,7 @@ export function Paper1GrowthRoadmap({ report, feedback }: { report: Paper1Report
               </div>
               <Paragraph>
                 <span className="font-semibold text-edt-forest">{p.areaOverview}: </span>
-                {bodyOf(feedback, area.overviewCode)}
+                <RichText text={bodyOf(feedback, area.overviewCode)} />
               </Paragraph>
               <div className="space-y-3">
                 {paper1GrammarPoints(area, feedback).map((item) => (
@@ -268,21 +281,31 @@ export function Paper1Concluding({ report, feedback }: { report: Paper1Report; f
       <CardTitle>{p.concludingTitle}</CardTitle>
       {fields ? (
         <div className="space-y-3">
-          {fields.intro ? <Paragraph>{fields.intro}</Paragraph> : null}
+          {fields.intro ? (
+            <Paragraph>
+              <RichText text={fields.intro} />
+            </Paragraph>
+          ) : null}
           {fields.steps?.length ? (
             <ul className="space-y-2 pl-1">
               {fields.steps.map((step) => (
                 <li key={step.label} className="break-words text-sm leading-relaxed text-slate-700">
                   <span className="font-semibold text-edt-forest">{step.label}: </span>
-                  {step.text}
+                  <RichText text={step.text} />
                 </li>
               ))}
             </ul>
           ) : null}
-          {fields.closing ? <Paragraph>{fields.closing}</Paragraph> : null}
+          {fields.closing ? (
+            <Paragraph>
+              <RichText text={fields.closing} />
+            </Paragraph>
+          ) : null}
         </div>
       ) : (
-        <Paragraph>{item.body}</Paragraph>
+        <Paragraph>
+          <RichText text={item.body} />
+        </Paragraph>
       )}
     </Card>
   );
@@ -315,7 +338,9 @@ export function Paper1Vocabulary({ report, feedback }: { report: Paper1Report; f
       </ul>
 
       <h4 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-edt-olive">{p.overallComments}</h4>
-      <Paragraph>{[bodyOf(feedback, partB.placementCode), additional].filter(Boolean).join(' ')}</Paragraph>
+      <Paragraph>
+        <RichText text={[bodyOf(feedback, partB.placementCode), additional].filter(Boolean).join(' ')} />
+      </Paragraph>
 
       {roadmap ? (
         <>
@@ -323,7 +348,7 @@ export function Paper1Vocabulary({ report, feedback }: { report: Paper1Report; f
           <ul className="list-disc space-y-1.5 pl-5 marker:text-edt-gold">
             {roadmapBullets(roadmap).map((bullet) => (
               <li key={bullet} className="break-words text-sm leading-relaxed text-slate-700">
-                {bullet}
+                <RichText text={bullet} />
               </li>
             ))}
           </ul>

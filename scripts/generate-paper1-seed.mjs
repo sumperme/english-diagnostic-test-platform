@@ -12,10 +12,11 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, collect } from './extract-paper1-bank.mjs';
-import { collectFeedback } from './extract-paper1-feedback.mjs';
+import { collectFeedback, stripMarkup } from './extract-paper1-feedback.mjs';
 
 const SEED_TS = 1760400000000; // 2025-10-14 00:00:00 UTC — deterministic
 const OUT = join(ROOT, 'migrations', '0020_paper1_bank_and_feedback.sql');
+const MARKUP_OUT = join(ROOT, 'migrations', '0021_paper1_feedback_formatting.sql');
 
 const q = (s) => `'${String(s ?? '').replace(/'/g, "''")}'`;
 const qn = (s) => (s == null || s === '' ? 'NULL' : q(s));
@@ -224,103 +225,109 @@ for (let canonical = 1; canonical <= 90; canonical += 1) {
 out('');
 
 // Feedback library
-const feedbackRows = [];
-const addFeedback = (row) => {
-  if (!FEEDBACK_CODE_RE.test(row.code)) fail(`Bad feedback code ${row.code}`);
-  if (feedbackRows.some((r) => r.code === row.code)) fail(`Duplicate feedback code ${row.code}`);
-  if (!String(row.body ?? '').trim()) fail(`Empty feedback body for ${row.code}`);
-  feedbackRows.push(row);
-};
+function buildFeedbackRows(feedback) {
+  const typesByArea = new Map(feedback.areas.map((a) => [a.area, a.types]));
+  const feedbackRows = [];
+  const addFeedback = (row) => {
+    if (!FEEDBACK_CODE_RE.test(row.code)) fail(`Bad feedback code ${row.code}`);
+    if (feedbackRows.some((r) => r.code === row.code)) fail(`Duplicate feedback code ${row.code}`);
+    if (!String(row.body ?? '').trim()) fail(`Empty feedback body for ${row.code}`);
+    feedbackRows.push(row);
+  };
 
-for (const micro of feedback.variants) {
-  const type = typesByArea.get(micro.area)?.get(micro.type);
-  if (!type) continue;
-  addFeedback({
-    code: `${micro.questionCode}-00`,
-    part: 1,
-    questionCode: micro.questionCode,
-    kind: 'micro_feedback',
-    typeRef: micro.typeRef,
-    heading: type.heading,
-    body: type.fields.map((f) => `${f.label}: ${f.text}`).join('\n'),
-    fields: type.fields,
-    sort: micro.slot * 100 + micro.variant,
-  });
+  for (const micro of feedback.variants) {
+    const type = typesByArea.get(micro.area)?.get(micro.type);
+    if (!type) continue;
+    addFeedback({
+      code: `${micro.questionCode}-00`,
+      part: 1,
+      questionCode: micro.questionCode,
+      kind: 'micro_feedback',
+      typeRef: micro.typeRef,
+      heading: type.heading,
+      body: type.fields.map((f) => `${f.label}: ${f.text}`).join('\n'),
+      fields: type.fields,
+      sort: micro.slot * 100 + micro.variant,
+    });
+  }
+
+  for (const o of feedback.areaOverviews) {
+    const [minScore, maxScore] = AREA_OVERVIEW_RANGES[o.aa];
+    addFeedback({
+      code: `01-01-${pad2(o.area)}-000-00-${o.aa}`,
+      part: 1,
+      kind: 'area_overview',
+      heading: DIMENSIONS[o.area - 1].name,
+      body: o.text,
+      fields: { band: o.band, minScore, maxScore },
+      sort: o.area * 10 + Number(o.aa),
+    });
+  }
+
+  for (const c of feedback.concluding) {
+    const [minPriority, maxPriority] = CONCLUDING_RANGES[c.aa];
+    addFeedback({
+      code: `01-01-00-000-00-${c.aa}`,
+      part: 1,
+      kind: 'part_a_concluding',
+      heading: c.label,
+      body: [c.intro, ...c.steps.map((s) => `${s.label}: ${s.text}`), c.closing].filter(Boolean).join('\n'),
+      fields: { bucket: c.bucket, minPriority, maxPriority, intro: c.intro, steps: c.steps, closing: c.closing },
+      sort: Number(c.aa),
+    });
+  }
+
+  for (const t of feedback.templates) {
+    addFeedback({
+      code: `01-01-00-000-01-${t.aa}`,
+      part: 1,
+      kind: 'part_a_template',
+      heading: t.key,
+      body: t.text,
+      fields: { key: t.key },
+      sort: Number(t.aa),
+    });
+  }
+
+  for (const p of feedback.partB.placement) {
+    addFeedback({
+      code: `01-02-00-000-00-${p.aa}`,
+      part: 2,
+      kind: 'part_b_placement',
+      heading: p.label,
+      body: p.text,
+      fields: { level: p.level },
+      sort: Number(p.aa),
+    });
+  }
+
+  for (const a of feedback.partB.additional) {
+    addFeedback({
+      code: `01-02-00-000-01-${a.aa}`,
+      part: 2,
+      kind: 'part_b_additional',
+      heading: a.title,
+      body: a.text,
+      fields: { key: a.key, condition: a.condition || null },
+      sort: Number(a.aa),
+    });
+  }
+
+  for (const r of feedback.partB.roadmap) {
+    addFeedback({
+      code: `01-02-00-000-02-${r.aa}`,
+      part: 2,
+      kind: 'part_b_roadmap',
+      heading: r.label,
+      body: r.bullets.join('\n'),
+      fields: { level: r.level, bullets: r.bullets },
+      sort: Number(r.aa),
+    });
+  }
+  return feedbackRows;
 }
 
-for (const o of feedback.areaOverviews) {
-  const [minScore, maxScore] = AREA_OVERVIEW_RANGES[o.aa];
-  addFeedback({
-    code: `01-01-${pad2(o.area)}-000-00-${o.aa}`,
-    part: 1,
-    kind: 'area_overview',
-    heading: DIMENSIONS[o.area - 1].name,
-    body: o.text,
-    fields: { band: o.band, minScore, maxScore },
-    sort: o.area * 10 + Number(o.aa),
-  });
-}
-
-for (const c of feedback.concluding) {
-  const [minPriority, maxPriority] = CONCLUDING_RANGES[c.aa];
-  addFeedback({
-    code: `01-01-00-000-00-${c.aa}`,
-    part: 1,
-    kind: 'part_a_concluding',
-    heading: c.label,
-    body: [c.intro, ...c.steps.map((s) => `${s.label}: ${s.text}`), c.closing].filter(Boolean).join('\n'),
-    fields: { bucket: c.bucket, minPriority, maxPriority, intro: c.intro, steps: c.steps, closing: c.closing },
-    sort: Number(c.aa),
-  });
-}
-
-for (const t of feedback.templates) {
-  addFeedback({
-    code: `01-01-00-000-01-${t.aa}`,
-    part: 1,
-    kind: 'part_a_template',
-    heading: t.key,
-    body: t.text,
-    fields: { key: t.key },
-    sort: Number(t.aa),
-  });
-}
-
-for (const p of feedback.partB.placement) {
-  addFeedback({
-    code: `01-02-00-000-00-${p.aa}`,
-    part: 2,
-    kind: 'part_b_placement',
-    heading: p.label,
-    body: p.text,
-    fields: { level: p.level },
-    sort: Number(p.aa),
-  });
-}
-
-for (const a of feedback.partB.additional) {
-  addFeedback({
-    code: `01-02-00-000-01-${a.aa}`,
-    part: 2,
-    kind: 'part_b_additional',
-    heading: a.title,
-    body: a.text,
-    fields: { key: a.key, condition: a.condition || null },
-    sort: Number(a.aa),
-  });
-}
-
-for (const r of feedback.partB.roadmap) {
-  addFeedback({
-    code: `01-02-00-000-02-${r.aa}`,
-    part: 2,
-    kind: 'part_b_roadmap',
-    heading: r.label,
-    body: r.bullets.join('\n'),
-    fields: { level: r.level, bullets: r.bullets },
-    sort: Number(r.aa),
-  });
-}
+const feedbackRows = buildFeedbackRows(feedback);
 
 out('-- Report feedback library');
 for (const row of feedbackRows) {
@@ -363,6 +370,45 @@ for (const level of Object.keys(partBGroups)) {
 const partAMicro = feedbackRows.filter((r) => r.kind === 'micro_feedback').length;
 if (partAMicro !== 1800) fail(`Expected 1800 micro-feedback rows, got ${partAMicro}`);
 
+// 0021: the same rows with the documents' italics (*text*) and hyperlinks ([text](url)).
+// 0020 is applied, so formatting ships as UPDATEs; stripping the markup must give 0020's text.
+const markupRows = buildFeedbackRows(collectFeedback({ markup: true }));
+const plainByCode = new Map(feedbackRows.map((row) => [row.code, row]));
+const markupUpdates = [];
+const deepStrip = (value) =>
+  typeof value === 'string'
+    ? stripMarkup(value)
+    : Array.isArray(value)
+      ? value.map(deepStrip)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, deepStrip(v)]))
+        : value;
+if (markupRows.length !== feedbackRows.length) fail(`Markup pass built ${markupRows.length} rows, plain pass ${feedbackRows.length}`);
+for (const row of markupRows) {
+  const plain = plainByCode.get(row.code);
+  if (!plain) {
+    fail(`Markup row ${row.code} has no plain counterpart`);
+    continue;
+  }
+  const fields = JSON.stringify(row.fields);
+  const plainFields = JSON.stringify(plain.fields);
+  if (
+    stripMarkup(row.heading) !== String(plain.heading ?? '') ||
+    stripMarkup(row.body) !== plain.body ||
+    JSON.stringify(deepStrip(row.fields)) !== plainFields
+  ) {
+    fail(`${row.code}: markup text does not reduce to the 0020 text`);
+    continue;
+  }
+  for (const text of [row.heading, row.body, fields]) {
+    const outsideLinks = String(text ?? '').replace(/\]\(https?:\/\/[^)\s]+\)/g, ']');
+    if ((outsideLinks.match(/\*/g) ?? []).length % 2) fail(`${row.code}: unbalanced italic markers`);
+  }
+  if (row.heading !== plain.heading || row.body !== plain.body || fields !== plainFields) markupUpdates.push(row);
+}
+const links = [...new Set(markupRows.flatMap((row) => [...`${row.body}`.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)].map((m) => `${m[1]} -> ${m[2]}`)))];
+if (links.length !== 3) fail(`Expected 3 distinct hyperlinks in the feedback, found ${links.length}: ${links.join('; ')}`);
+
 if (errors.length > 0) {
   console.error(`Generation failed with ${errors.length} error(s):`);
   for (const e of errors.slice(0, 50)) console.error(`  - ${e}`);
@@ -370,6 +416,24 @@ if (errors.length > 0) {
 }
 
 writeFileSync(OUT, `${lines.join('\n')}\n`, 'utf8');
+
+const markupLines = [
+  '-- Paper I feedback formatting: italics and hyperlinks from the Oct 2026 client documents.',
+  '-- GENERATED by scripts/generate-paper1-seed.mjs. Do not hand-edit.',
+  '--',
+  '-- Inline markup in feedback_items.heading / body / fields_json (rendered by both report renderers):',
+  '--   *text*        italic, as in the Word documents (grammar points, example words, book titles)',
+  '--   [text](url)   external hyperlink (Part B roadmap word lists)',
+  '-- Only text formatting changes: removing the markup gives back the 0020 wording exactly.',
+  `-- Rows updated: ${markupUpdates.length} of ${markupRows.length}.`,
+  ...links.map((link) => `--   link: ${link}`),
+  '',
+  ...markupUpdates.map(
+    (row) =>
+      `UPDATE feedback_items SET heading = ${qn(row.heading)}, body = ${q(row.body)}, fields_json = ${q(JSON.stringify(row.fields))} WHERE feedback_code = '${row.code}';`,
+  ),
+];
+writeFileSync(MARKUP_OUT, `${markupLines.join('\n')}\n`, 'utf8');
 
 const partA = counts.filter((row) => Number(row.ggg) <= 60);
 const partB = counts.filter((row) => Number(row.ggg) >= 61);
@@ -381,3 +445,6 @@ console.log(`  Feedback rows: ${feedbackRows.length}  ${JSON.stringify(byKind)}`
 console.log(`  Key overrides (MicroFeedback wins): ${keyOverrides.length}`);
 for (const o of keyOverrides) console.log(`    ${o.code}: bank ${o.bank} -> ${o.micro}  ${o.target}`);
 console.log(`  Skipped bank files: ${skipped.length}`);
+console.log(`Wrote ${MARKUP_OUT}`);
+console.log(`  Feedback rows with italics/links: ${markupUpdates.length}`);
+for (const link of links) console.log(`    ${link}`);

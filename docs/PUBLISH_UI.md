@@ -137,7 +137,7 @@ The question banks for **all three papers live in D1** and ship as migrations (`
 
 Use `-SkipCleanse` for additive go-live that must keep Papers II/III attempts. Use a full cleanse when you also want sessions/vouchers reset.
 
-That script backs up remote D1 to `db_backup/` (unless `-SkipBackup`), applies pending migrations, optionally cleanses, and verifies row counts (**3 tests**, **145** groups, **2614** questions after `0020`).
+That script backs up remote D1 to `db_backup/` (unless `-SkipBackup`), applies pending migrations, optionally cleanses, and verifies row counts (**3 tests**, **145** groups, **2,695** questions and **1,869** feedback items after `0020`; `0021` only reformats feedback text).
 
 Manual equivalent (no backup, no cleanse):
 
@@ -200,7 +200,7 @@ These stay local and are skipped by `publish-ui.ps1` (and/or `.gitignore`):
 - `frontend/dist/` (built on Cloudflare during deploy)
 - `.dev.vars`, `.wrangler/`, `worker/.wrangler/`, `.cursor/`, `Client_Feedback/` (incl. audio masters)
 
-These **can** be committed when changed: `scripts/publish-ui.ps1`, `scripts/upload-assets.ps1`, `scripts/migrate-remote-db.ps1`, the seed generators (`scripts/generate-paper1-seed.mjs`, `scripts/extract-paper1-bank.mjs`, `scripts/extract-paper1-feedback.mjs`, `scripts/docx-text.mjs`, `scripts/generate-test2-seed.mjs`, `scripts/generate-test3-seed.mjs`, `scripts/test2-content.mjs`, `scripts/test3-content.mjs`), worker/frontend code, `migrations/` (through `0020`), and the docs (`README.md`, `AGENTS.md`, and everything under `docs/`).
+These **can** be committed when changed: `scripts/publish-ui.ps1`, `scripts/upload-assets.ps1`, `scripts/migrate-remote-db.ps1`, the seed generators (`scripts/generate-paper1-seed.mjs`, `scripts/extract-paper1-bank.mjs`, `scripts/extract-paper1-feedback.mjs`, `scripts/docx-text.mjs`, `scripts/generate-test2-seed.mjs`, `scripts/generate-test3-seed.mjs`, `scripts/test2-content.mjs`, `scripts/test3-content.mjs`), worker/frontend code, `migrations/` (through `0021`), and the docs (`README.md`, `AGENTS.md`, and everything under `docs/`).
 
 ---
 
@@ -220,7 +220,7 @@ npm run preview:local
 
 The script will:
 
-1. Apply local D1 migrations through **`0020`** — full banks for **Papers I–III** (unified schema, attempts tables, `voucher_test_usage`, Paper III schema/seed/activate + prompt copy, Paper I 30-variant bank replace)
+1. Apply local D1 migrations through **`0021`** — full banks for **Papers I–III** (unified schema, attempts tables, `voucher_test_usage`, Paper III schema/seed/activate + prompt copy, Paper I 30-variant bank replace, Paper I feedback italics/links)
 2. Seed vouchers from `Evouchers.txt` (or `TEST-LOCAL-001` if absent) and a teacher credential into the **local** database
 3. Reset voucher usage and wipe local attempts/reports/sessions, so every voucher can sit **each paper** again (3 attempts per paper per run)
 4. Check the **local R2 simulation** and, if missing, seed Paper II listening MP3s, Paper III speaking prompts + beeps, and report-PDF fonts (first run downloads the fonts once into `.fonts-cache/`)

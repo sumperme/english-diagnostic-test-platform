@@ -113,6 +113,18 @@ English only, with no questions, answer keys, cohort or ranking. The PDF layout 
 
 ---
 
+## v5.1 — Paper I feedback italics and word-list links (`0021`)
+
+Migration `0021_paper1_feedback_formatting.sql` (same generator, non-destructive) updates 1,845
+of the 1,869 `feedback_items` rows with inline markup taken from the Word files: `*italic*` for
+italicised runs (grammar-point titles, example words, structures, book titles) and
+`[text](url)` for the three Part B roadmap links — *the Oxford 3000* (A2), *the Oxford 5000* (B1)
+and the *Academic Word List* (B2). No wording changes. The web report renders the markup with
+`RichText`; the PDF uses Montserrat Italic / SemiBold Italic from R2 and clickable link
+annotations (PDF layout version 10). Upload the two italic fonts with `upload-assets.ps1`.
+
+---
+
 ## Pending — Paper I history backfill
 
 **Superseded by `0020`.** Live Paper I history was wiped; old scores cannot be rebound to
