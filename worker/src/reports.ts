@@ -1,4 +1,4 @@
-// Server-side PDF report service with FIFO cache.
+// Server-side PDF report service with a 24-hour cache.
 //
 //   GET /api/reports/:attemptId/pdf[?voucher=CODE]
 //
@@ -13,8 +13,9 @@
 // Text is measured before it is drawn so page breaks fall between cards and rows, never
 // inside them; grammar-point cards taller than the remaining page split between fields.
 //
-// Cache: latest 20 PDFs kept in R2 under pdf-cache/, indexed in D1 pdf_cache_index,
-// evicted first-come-first-leave by created_at (insertion order, not last access).
+// Cache: PDFs written to R2 under pdf-cache/ at submit (and on first download if
+// that write missed). Indexed in D1 pdf_cache_index. Kept for 24 hours after the
+// attempt ends, then evicted. Downloads after expiry return 410.
 
 import { PDFDocument, PDFFont, PDFPage, PDFString, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
@@ -38,7 +39,10 @@ type AuthEnv = { DB: D1Database };
 
 type JsonResponder = (body: unknown, init?: ResponseInit, origin?: string) => Response;
 
-const PDF_CACHE_MAX = 20;
+export const PDF_TTL_MS = 24 * 60 * 60 * 1000;
+export const PDF_LAYOUT = 10;
+export const REPORT_EXPIRED_MESSAGE =
+  'Your test report is no longer available. Reports are retained on our servers for 24 hours after test completion. For future tests, please ensure you save a local copy for your records.';
 
 // EDT palette (AGENTS.md design tokens)
 const FOREST = rgb(27 / 255, 45 / 255, 42 / 255);
@@ -66,6 +70,7 @@ export type AttemptRow = {
   test_id: number;
   session_token: string | null;
   status: string;
+  end_time: number | null;
   external_ref: string | null;
   user_group: string | null;
 };
@@ -78,7 +83,7 @@ export async function authorizeAttemptAccess(
   url: URL,
 ): Promise<{ attempt: AttemptRow | null; authorized: boolean }> {
   const attempt = await env.DB.prepare(
-    `SELECT a.id, a.user_id, a.test_id, a.session_token, a.status, u.external_ref, u.user_group
+    `SELECT a.id, a.user_id, a.test_id, a.session_token, a.status, a.end_time, u.external_ref, u.user_group
      FROM test_attempts a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?`,
   )
     .bind(attemptId)
@@ -106,6 +111,40 @@ export async function handleReportRequest(
   if (!attempt) return json({ error: 'Not found' }, { status: 404 }, origin);
   if (!authorized) return json({ error: 'Unauthorized' }, { status: 401 }, origin);
 
+  const completedAt = attempt.end_time ?? 0;
+  const expiresAt = (completedAt > 0 ? completedAt : Date.now()) + PDF_TTL_MS;
+  if (completedAt > 0 && Date.now() > expiresAt) {
+    await evictExpired(env);
+    return json({ error: 'REPORT_EXPIRED', message: REPORT_EXPIRED_MESSAGE }, { status: 410 }, origin);
+  }
+
+  const stored = await loadOrRenderPdf(env, attemptId, attempt.external_ref, expiresAt);
+  if (stored === 'not-ready') return json({ error: 'Report not ready' }, { status: 404 }, origin);
+  if (stored === 'corrupt') return json({ error: 'Corrupt report variables' }, { status: 500 }, origin);
+  return pdfResponse(stored.bytes, stored.filename, origin);
+}
+
+/** Render the report PDF now and write it to R2. Used at submit so download is a cache hit. */
+export async function cacheAttemptPdf(env: ReportsEnv, attemptId: string): Promise<void> {
+  const attempt = await env.DB.prepare('SELECT end_time FROM test_attempts WHERE id = ?')
+    .bind(attemptId)
+    .first<{ end_time: number | null }>();
+  const completedAt = attempt?.end_time ?? Date.now();
+  const expiresAt = completedAt + PDF_TTL_MS;
+  const stored = await loadOrRenderPdf(env, attemptId, null, expiresAt);
+  if (stored === 'not-ready' || stored === 'corrupt') {
+    throw new Error(`PDF cache warm failed for ${attemptId}: ${stored}`);
+  }
+}
+
+type StoredPdf = { bytes: Uint8Array | ReadableStream; filename: string };
+
+async function loadOrRenderPdf(
+  env: ReportsEnv,
+  attemptId: string,
+  externalRef: string | null,
+  expiresAt: number,
+): Promise<StoredPdf | 'not-ready' | 'corrupt'> {
   const report = await env.DB.prepare(
     `SELECT report_version, variables, ai_status, ai_feedback_en, ai_generated_at
      FROM attempt_reports WHERE test_attempt_id = ?`,
@@ -118,50 +157,42 @@ export async function handleReportRequest(
       ai_feedback_en: string | null;
       ai_generated_at: number | null;
     }>();
-  if (!report) return json({ error: 'Report not ready' }, { status: 404 }, origin);
+  if (!report) return 'not-ready';
 
   let variables: ReportVariablesV1;
   try {
     variables = JSON.parse(report.variables) as ReportVariablesV1;
   } catch {
-    return json({ error: 'Corrupt report variables' }, { status: 500 }, origin);
+    return 'corrupt';
   }
 
-  const aiFeedback = report.ai_status === 'done' ? report.ai_feedback_en : null;
+  const pdfFilename = reportPdfFilename(externalRef ?? variables.candidate.ref, variables.testCode, attemptId);
+  const cacheKey = `${attemptId}:${report.report_version}:ai${report.ai_generated_at ?? 0}:L${PDF_LAYOUT}`;
 
-  const pdfFilename = reportPdfFilename(attempt.external_ref, variables.testCode, attemptId);
-  // ai_generated_at busts the cache so PDFs downloaded after generation include
-  // the feedback instead of serving the stale pre-feedback copy.
-  // pdfLayout bumps whenever the rendered layout changes.
-  const pdfLayout = 10;
-  const cacheKey = `${attemptId}:${report.report_version}:ai${report.ai_generated_at ?? 0}:L${pdfLayout}`;
-
-  // Cache hit: stream straight from R2.
   const indexRow = await env.DB.prepare('SELECT r2_key FROM pdf_cache_index WHERE cache_key = ?')
     .bind(cacheKey)
     .first<{ r2_key: string }>();
   if (indexRow) {
     const cached = await env.R2_ASSETS.get(indexRow.r2_key);
-    if (cached) return pdfResponse(cached.body, pdfFilename, origin);
-    // Index row without object (out-of-band deletion) — drop it and re-render.
+    if (cached) return { bytes: cached.body, filename: pdfFilename };
     await env.DB.prepare('DELETE FROM pdf_cache_index WHERE cache_key = ?').bind(cacheKey).run();
   }
 
+  const aiFeedback = report.ai_status === 'done' ? report.ai_feedback_en : null;
   const feedback = variables.paper1 ? await loadPaper1Feedback(env.DB, variables.paper1) : {};
   const bytes = await renderReportPdf(env, variables, aiFeedback, feedback);
 
-  // Store + FIFO eviction. The object key mirrors the cache key's AI state so
-  // pre- and post-feedback renders never overwrite each other.
-  const r2Key = `pdf-cache/${attemptId}-${report.report_version}-ai${report.ai_generated_at ?? 0}-L${pdfLayout}.pdf`;
+  const r2Key = `pdf-cache/${attemptId}-${report.report_version}-ai${report.ai_generated_at ?? 0}-L${PDF_LAYOUT}.pdf`;
   await env.R2_ASSETS.put(r2Key, bytes, { httpMetadata: { contentType: 'application/pdf' } });
+  const now = Date.now();
   await env.DB.prepare(
-    'INSERT OR REPLACE INTO pdf_cache_index (cache_key, test_attempt_id, r2_key, size_bytes, created_at) VALUES (?, ?, ?, ?, ?)',
+    'INSERT OR REPLACE INTO pdf_cache_index (cache_key, test_attempt_id, r2_key, size_bytes, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
   )
-    .bind(cacheKey, attemptId, r2Key, bytes.byteLength, Date.now())
+    .bind(cacheKey, attemptId, r2Key, bytes.byteLength, now, expiresAt)
     .run();
-  await evictOldest(env);
+  await evictExpired(env);
 
-  return pdfResponse(bytes, pdfFilename, origin);
+  return { bytes, filename: pdfFilename };
 }
 
 async function isAuthorized(request: Request, env: AuthEnv, attempt: AttemptRow, url: URL): Promise<boolean> {
@@ -171,7 +202,8 @@ async function isAuthorized(request: Request, env: AuthEnv, attempt: AttemptRow,
     return true;
   }
 
-  // 2. Active session that owns the attempt.
+  // 2. Session that owns the attempt: still valid, or the attempt finished within 24 hours
+  //    (the login TTL is 2 hours, so a finished Paper I would otherwise lose PDF access).
   const auth = request.headers.get('Authorization') ?? '';
   const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer && attempt.session_token && bearer === attempt.session_token) {
@@ -179,6 +211,8 @@ async function isAuthorized(request: Request, env: AuthEnv, attempt: AttemptRow,
       .bind(bearer)
       .first<{ expires_at: number }>();
     if (session && session.expires_at > Date.now()) return true;
+    const withinReportWindow = (attempt.end_time ?? 0) > 0 && Date.now() <= (attempt.end_time ?? 0) + PDF_TTL_MS;
+    if (withinReportWindow) return true;
   }
 
   // 3. Teacher key scoped to the attempt user's group.
@@ -193,14 +227,16 @@ async function isAuthorized(request: Request, env: AuthEnv, attempt: AttemptRow,
   return false;
 }
 
-async function evictOldest(env: ReportsEnv) {
+async function evictExpired(env: ReportsEnv) {
+  const now = Date.now();
   const rows = await env.DB.prepare(
-    'SELECT cache_key, r2_key FROM pdf_cache_index ORDER BY created_at ASC',
-  ).all<{ cache_key: string; r2_key: string }>();
-  const all = rows.results ?? [];
-  if (all.length <= PDF_CACHE_MAX) return;
-  const victims = all.slice(0, all.length - PDF_CACHE_MAX);
-  for (const victim of victims) {
+    `SELECT cache_key, r2_key FROM pdf_cache_index
+     WHERE (expires_at IS NOT NULL AND expires_at <= ?)
+        OR (expires_at IS NULL AND created_at <= ?)`,
+  )
+    .bind(now, now - PDF_TTL_MS)
+    .all<{ cache_key: string; r2_key: string }>();
+  for (const victim of rows.results ?? []) {
     await env.R2_ASSETS.delete(victim.r2_key);
     await env.DB.prepare('DELETE FROM pdf_cache_index WHERE cache_key = ?').bind(victim.cache_key).run();
   }

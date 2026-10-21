@@ -14,9 +14,9 @@
 // correct answers. Teachers may fetch Paper III productions (recordings /
 // transcripts / essays) on the class dashboard.
 
-import { consumeVoucherUse, getSession } from './index';
+import { consumeVoucherUse, extendSession, getSession } from './index';
 import { enqueuePaper3Grade, type Paper3GradeEnv } from './paper3Grading';
-import { authorizeAttemptAccess } from './reports';
+import { authorizeAttemptAccess, cacheAttemptPdf, PDF_TTL_MS } from './reports';
 import {
   buildPaper1Report,
   loadPaper1Feedback,
@@ -359,12 +359,15 @@ async function startAttempt(request: Request, env: AttemptsEnv, origin: string |
     };
   });
 
+  const timeLimitSeconds = test.time_limit_seconds ?? 3600;
+  await extendSession(env.DB, session.token, now + timeLimitSeconds * 1000 + PDF_TTL_MS);
+
   return json(
     {
       attemptId,
       testCode: test.test_code,
       testName: test.name,
-      timeLimitSeconds: test.time_limit_seconds ?? 3600,
+      timeLimitSeconds,
       items,
       resources,
     },
@@ -524,6 +527,7 @@ async function submitAttempt(
     } catch (error) {
       console.error('Paper3 enqueue after submit failed', error);
     }
+    await extendSession(env.DB, session.token, now + PDF_TTL_MS);
     return json(
       {
         variables: null,
@@ -742,6 +746,15 @@ async function submitAttempt(
       now,
     )
     .run();
+
+  await extendSession(env.DB, session.token, now + PDF_TTL_MS);
+  if (env.R2_ASSETS) {
+    try {
+      await cacheAttemptPdf({ DB: env.DB, R2_ASSETS: env.R2_ASSETS }, attemptId);
+    } catch (error) {
+      console.error('PDF cache at submit failed', error);
+    }
+  }
 
   return json(await buildReportPayload(env, attemptId), undefined, origin);
 }

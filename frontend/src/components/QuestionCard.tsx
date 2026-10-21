@@ -41,7 +41,7 @@ export function QuestionCard({
           <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-base font-bold text-slate-600 shadow-sm">
             Q{questionNumber}
           </span>
-          <p className="flex-1 pt-1.5 text-base font-medium leading-relaxed text-slate-800">{q.text}</p>
+          <p className="flex-1 whitespace-pre-wrap pt-1.5 text-base font-medium leading-relaxed text-slate-800">{q.text}</p>
         </div>
       </div>
 

@@ -23,6 +23,9 @@ export const REPORT_MESSAGES = {
   none: 'None',
   downloadPdf: 'Download Report (PDF)',
   downloading: 'Downloading…',
+  pdfError: 'PDF download failed. Please try again.',
+  pdfExpired:
+    'Your test report is no longer available. Reports are retained on our servers for 24 hours after test completion. For future tests, please ensure you save a local copy for your records.',
   aiSectionTitle: 'AI Tutor Feedback',
   aiGenerate: 'Generate AI Feedback',
   aiGenerating: 'Generating…',

@@ -285,6 +285,17 @@ eq(
   );
 }
 
+{
+  const migration = readFileSync(fileURLToPath(new URL('../migrations/0022_paper1_speaker_b_newline.sql', import.meta.url)), 'utf8');
+  assert(migration.includes("CHAR(10) || 'Speaker B'"), '0022 inserts a newline before Speaker B');
+  assert(migration.includes('expires_at'), '0022 adds pdf_cache_index.expires_at');
+}
+{
+  const reports = readFileSync(fileURLToPath(new URL('../worker/src/reports.ts', import.meta.url)), 'utf8');
+  assert(reports.includes('24 hours after test completion'), 'PDF expiry message names the 24-hour window');
+  assert(reports.includes('PDF_TTL_MS = 24 * 60 * 60 * 1000'), 'PDF cache TTL is 24 hours');
+}
+
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

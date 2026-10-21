@@ -125,6 +125,17 @@ annotations (PDF layout version 10). Upload the two italic fonts with `upload-as
 
 ---
 
+## v5.2 — Speaker B line breaks and 24-hour report PDFs (`0022`)
+
+Migration `0022_paper1_speaker_b_newline.sql` puts `Speaker B` on its own line in Paper I
+dialogue stems (the bank extractor had collapsed wrapped Word paragraphs). Report PDFs are
+now written at submit, stored under R2 `pdf-cache/` with `pdf_cache_index.expires_at`, and
+kept for 24 hours after the attempt ends. After that the download is disabled and the API
+returns 410. The 2-hour login session is extended through the report window so a finished
+Paper I can still download its PDF.
+
+---
+
 ## Pending — Paper I history backfill
 
 **Superseded by `0020`.** Live Paper I history was wiped; old scores cannot be rebound to

@@ -214,7 +214,7 @@ Present all mappings as **indicative**, never exact (see the proficiency disclai
 - **Reports are English-only** (HTML, PDF and AI feedback). Labels come from `frontend/src/i18n/reportMessages.ts` (shared by both site locales) and `worker/src/reportI18n.ts`. The rest of the site UI stays bilingual (EN + zh-HK in `messages.ts`).
 - Paper I preset text is resolved from `feedback_items` by code at render time: the attempts API returns it as `feedback` alongside `variables`, and the PDF renderer loads it directly (`loadPaper1Feedback` in `worker/src/paper1Report.ts`). Edit the wording with a new migration that updates `feedback_items`; no code change is needed.
 - Reports show **no questions or answer review**, and **no cohort, percentile or peer ranking**. Candidate payloads always carry `review: []`; only the teacher Paper III view receives the candidate's own recordings, transcripts and essays (never MCQ keys).
-- PDF download: `GET /api/reports/:attemptId/pdf` (`worker/src/reports.ts`) — pdf-lib render, EDT-branded, A4, measured layout that keeps headings with their content and splits grammar-point cards only between rows; cached in R2 (latest 20, FIFO; cache key includes the layout version). Auth: voucher retrieval pair, owning session, or teacher key scoped by `user_group`.
+- PDF download: `GET /api/reports/:attemptId/pdf` (`worker/src/reports.ts`) — pdf-lib render, EDT-branded, A4, measured layout that keeps headings with their content and splits grammar-point cards only between rows; written at submit and kept in R2 for 24 hours after the attempt ends (410 after that). Auth: voucher retrieval pair, owning session (including 24 hours after submit), or teacher key scoped by `user_group`.
 - Per-question outcomes live in `test_attempt_answers`, not in the report JSON.
 
 ---
@@ -357,6 +357,10 @@ migrations/                      ← D1 migrations; never edit an applied one
   0020_paper1_bank_and_feedback.sql
                                  ← Oct 2026 Paper I bank + feedback_items + grids (generated;
                                    destructive hard-replace of Paper I)
+  0021_paper1_feedback_formatting.sql
+                                 ← italics / word-list links in feedback_items
+  0022_paper1_speaker_b_newline.sql
+                                 ← Speaker B on its own line; 24-hour PDF cache expiry
 
 scripts/
   local-preview.ps1              ← one-click local dev (D1 + R2 + vouchers + servers); local-only
@@ -380,7 +384,7 @@ worker/src/
   paper1Report.ts                ← Paper I rv3 builder (bands, areas, Part B placement, ladder)
                                    + feedback_items loader
   assets.ts                      ← authenticated audio / response streaming (R2)
-  reports.ts                     ← server-side PDF (English) + FIFO cache
+  reports.ts                     ← server-side PDF (English) + 24-hour cache
   reportVariables.ts             ← rv1 (II/III) / rv3 (Paper I) report variables schema
   reportI18n.ts                  ← PDF labels (English only)
   admin.ts                       ← admin API: vouchers, teacher credentials, AI usage

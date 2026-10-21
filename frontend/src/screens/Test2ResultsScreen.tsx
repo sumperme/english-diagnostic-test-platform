@@ -1,9 +1,7 @@
-import { useState } from 'react';
-import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
 import { RadarChart } from '../components/RadarChart';
+import { ReportPdfActions } from '../components/ReportPdfActions';
 import { getMessages } from '../i18n/messages';
-import { downloadServerReportPdf } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { scoreBarColor } from '../lib/scoring';
 import type { Session, Test2Result } from '../types';
@@ -31,8 +29,6 @@ export function Test2ResultsScreen({
   onHome: () => void;
 }) {
   const t = getMessages('en');
-  const [isExporting, setIsExporting] = useState(false);
-  const [pdfError, setPdfError] = useState(false);
   const variables = result.variables;
 
   if (!variables) {
@@ -55,23 +51,6 @@ export function Test2ResultsScreen({
   const overallBand = variables.bands.overall;
   const overallNarrative = overallBand ? t.test2.bandNarratives[overallBand.bandKey as keyof typeof t.test2.bandNarratives] : undefined;
   const overallColor = overallBand ? (BAND_COLOR[overallBand.bandKey] ?? 'bg-slate-100 text-slate-700 border-slate-300') : '';
-
-  const exportPdf = async () => {
-    setIsExporting(true);
-    setPdfError(false);
-    try {
-      const voucher = session.voucherCode ?? 'unknown';
-      await downloadServerReportPdf(
-        result.attemptId,
-        session.sessionToken,
-        `EDT-Report_${voucher}_02_${result.attemptId}.pdf`,
-      );
-    } catch {
-      setPdfError(true);
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const scoreCards = [
     {
@@ -277,22 +256,13 @@ export function Test2ResultsScreen({
           ) : null}
         </div>
 
-        <div className="pb-4 pt-8 no-print">
-          {pdfError ? <p className="mb-3 text-center text-sm text-rose-600">{t.test2.pdfError}</p> : null}
-          <AiFeedbackSection
-            attemptId={result.attemptId}
-            sessionToken={session.sessionToken}
-            downloadButton={
-              <button
-                onClick={() => void exportPdf()}
-                disabled={isExporting}
-                className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isExporting ? t.report.downloading : t.report.downloadPdf}
-              </button>
-            }
-          />
-        </div>
+        <ReportPdfActions
+          attemptId={result.attemptId}
+          sessionToken={session.sessionToken}
+          voucherCode={session.voucherCode}
+          endTime={variables.attempt.endTime}
+          filename={`EDT-Report_${session.voucherCode ?? 'unknown'}_02_${result.attemptId}.pdf`}
+        />
       </main>
     </div>
   );

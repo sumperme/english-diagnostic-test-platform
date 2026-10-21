@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { AiFeedbackSection } from '../components/AiFeedbackSection';
 import { EdtNavBar } from '../components/EdtNavBar';
 import {
   Paper1Concluding,
@@ -10,8 +8,8 @@ import {
   Paper1Vocabulary,
   ReportBand,
 } from '../components/Paper1Report';
+import { ReportPdfActions } from '../components/ReportPdfActions';
 import { getMessages } from '../i18n/messages';
-import { downloadServerReportPdf } from '../lib/api';
 import type { Session, Test2Result } from '../types';
 
 /** Paper I report (rv3): section order follows the Oct 2026 sample report. */
@@ -26,8 +24,6 @@ export function ResultsScreen({
 }) {
   const t = getMessages('en');
   const p = t.report.paper1;
-  const [isExporting, setIsExporting] = useState(false);
-  const [pdfError, setPdfError] = useState(false);
   const variables = result.variables;
   const report = variables?.paper1;
   const feedback = result.feedback ?? {};
@@ -41,19 +37,6 @@ export function ResultsScreen({
       </div>
     );
   }
-
-  const exportPdf = async () => {
-    setIsExporting(true);
-    setPdfError(false);
-    try {
-      const voucher = session.voucherCode ?? 'unknown';
-      await downloadServerReportPdf(result.attemptId, session.sessionToken, `EDT-Report_${voucher}_01_${result.attemptId}.pdf`);
-    } catch {
-      setPdfError(true);
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -83,22 +66,13 @@ export function ResultsScreen({
         <ReportBand>{p.partBTitle}</ReportBand>
         <Paper1Vocabulary report={report} feedback={feedback} />
 
-        <div className="pb-4 pt-4 no-print">
-          {pdfError ? <p className="mb-3 text-center text-sm text-rose-600">{t.test2.pdfError}</p> : null}
-          <AiFeedbackSection
-            attemptId={result.attemptId}
-            sessionToken={session.sessionToken}
-            downloadButton={
-              <button
-                onClick={() => void exportPdf()}
-                disabled={isExporting}
-                className="inline-flex items-center gap-2 rounded-xl bg-edt-forest px-6 py-3 text-sm font-semibold text-edt-neon transition-colors hover:bg-[#243b37] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isExporting ? t.report.downloading : t.report.downloadPdf}
-              </button>
-            }
-          />
-        </div>
+        <ReportPdfActions
+          attemptId={result.attemptId}
+          sessionToken={session.sessionToken}
+          voucherCode={session.voucherCode}
+          endTime={variables.attempt.endTime}
+          filename={`EDT-Report_${session.voucherCode ?? 'unknown'}_01_${result.attemptId}.pdf`}
+        />
       </main>
     </div>
   );

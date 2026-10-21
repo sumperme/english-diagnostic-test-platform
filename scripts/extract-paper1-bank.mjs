@@ -73,6 +73,11 @@ function normalise(text) {
     .trim();
 }
 
+/** Dialogue stems print Speaker B on its own line (live fix: migration 0022). */
+export function formatDialogueStem(text) {
+  return String(text ?? '').replace(/ +(?=Speaker B\b)/g, '\n');
+}
+
 // Pulls Q -> { key, target, focus } out of every answer-key table in the document.
 //
 // Two layouts occur. Most files use a single 4-column block (Q | Key | target | focus). Areas
@@ -226,7 +231,7 @@ function parseFile(file, meta) {
       ggg: item.ggg,
       qq: item.qq,
       number: item.number,
-      stem: item.stem,
+      stem: formatDialogueStem(item.stem),
       options: item.options,
       optionCount: letters.length,
       correctAnswer: entry ? entry.answer : null,

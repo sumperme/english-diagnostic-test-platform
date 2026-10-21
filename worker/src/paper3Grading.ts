@@ -16,6 +16,7 @@ import {
   fetchTranscript,
   uploadAudioToAssemblyAI,
 } from './paper3Assembly';
+import { cacheAttemptPdf } from './reports';
 import { REPORT_VARIABLES_VERSION, type BandRef, type ReportVariablesV1 } from './reportVariables';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
@@ -528,6 +529,11 @@ export async function gradePaper3Attempt(
       .run();
 
     await env.DB.prepare(`UPDATE test_attempts SET grading_status = 'done' WHERE id = ?`).bind(attemptId).run();
+    try {
+      await cacheAttemptPdf(env, attemptId);
+    } catch (error) {
+      console.error('Paper3 PDF cache after grading failed', error);
+    }
     return 'done';
   } catch (error) {
     console.error('Paper3 grading failed', error);

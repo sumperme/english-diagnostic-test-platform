@@ -191,6 +191,11 @@ export async function consumeVoucherUse(
   return true;
 }
 
+/** Keep the login session alive through the test plus the 24-hour report window. */
+export async function extendSession(db: D1Database, token: string, until: number): Promise<void> {
+  await db.prepare('UPDATE sessions SET expires_at = MAX(expires_at, ?) WHERE token = ?').bind(until, token).run();
+}
+
 export async function getSession(request: Request, env: { DB: D1Database }) {
   const auth = request.headers.get('Authorization') ?? '';
   const match = auth.match(/^Bearer\s+(.+)$/i);

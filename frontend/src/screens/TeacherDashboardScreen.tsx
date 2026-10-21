@@ -3,6 +3,7 @@ import { FeedbackBody } from '../components/AiFeedbackSection';
 import { LocaleSwitcher } from '../components/LocaleSwitcher';
 import { useLocale } from '../i18n/LocaleContext';
 import { getMessages } from '../i18n/messages';
+import { REPORT_MESSAGES } from '../i18n/reportMessages';
 import {
   ApiError,
   clearTeacherSession,
@@ -527,7 +528,13 @@ export function TeacherDashboardScreen({
                                   '',
                                   `EDT-Report_01_${sub.attemptId}.pdf`,
                                   session.teacherKey,
-                                )
+                                ).catch((error) => {
+                                  window.alert(
+                                    error instanceof ApiError && error.code === 'REPORT_EXPIRED'
+                                      ? REPORT_MESSAGES.pdfExpired
+                                      : REPORT_MESSAGES.pdfError,
+                                  );
+                                })
                               }
                             >
                               {t.teacher.downloadPdf}
@@ -586,7 +593,13 @@ export function TeacherDashboardScreen({
                                   '',
                                   `EDT-Report_${row.testCode}_${row.attemptId}.pdf`,
                                   session.teacherKey,
-                                )
+                                ).catch((error) => {
+                                  window.alert(
+                                    error instanceof ApiError && error.code === 'REPORT_EXPIRED'
+                                      ? REPORT_MESSAGES.pdfExpired
+                                      : REPORT_MESSAGES.pdfError,
+                                  );
+                                })
                               }
                             >
                               {t.teacher.downloadPdf}

@@ -237,13 +237,24 @@ export async function downloadServerReportPdf(
   sessionToken: string,
   fallbackFilename?: string,
   teacherKey?: string,
+  voucherCode?: string,
 ): Promise<void> {
   const headers: Record<string, string> = {};
   if (teacherKey) headers['X-Teacher-Key'] = teacherKey;
   else headers.Authorization = `Bearer ${sessionToken}`;
-  const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf`, { headers });
+  const query = !teacherKey && voucherCode ? `?voucher=${encodeURIComponent(voucherCode)}` : '';
+  const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(attemptId)}/pdf${query}`, { headers });
   if (!response.ok) {
-    throw new ApiError('PDF_DOWNLOAD_FAILED', `PDF request failed (${response.status})`);
+    let code = 'PDF_DOWNLOAD_FAILED';
+    let message = `PDF request failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { error?: string; message?: string };
+      if (body.error) code = body.error;
+      if (body.message) message = body.message;
+    } catch {
+      /* keep the status-based message */
+    }
+    throw new ApiError(code, message);
   }
   const blob = await response.blob();
   const disposition = response.headers.get('Content-Disposition') ?? '';
